@@ -9,6 +9,8 @@
 *.out
 
 go.work
+*.env
+.env
 
 .code
 .vscode
