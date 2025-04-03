@@ -28,7 +28,8 @@ func getDBCredentialsandPopulateJWTSecret() (string, error) {
 		dbHost := os.Getenv("DB_HOST")
 		dbPort := os.Getenv("DB_PORT")
 		dbName := os.Getenv("DB_NAME")
-		return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", dbHost, dbPort, dbUser, dbPass, dbName), nil
+		JWTSecret = os.Getenv("JWT_SECRET")
+		return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=require", dbHost, dbPort, dbUser, dbPass, dbName), nil
 	} else {
 		name := "projects/1037996227658/secrets/synapticz2pg/versions/3"
 		ctx := context.Background()
