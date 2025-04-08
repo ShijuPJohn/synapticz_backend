@@ -28,7 +28,6 @@ func ddlStrings() []string {
     id SERIAL PRIMARY KEY,
     question TEXT NOT NULL,
     subject VARCHAR(255) NOT NULL,
-    tags TEXT[], 
     exam VARCHAR(255),
     language VARCHAR(255) NOT NULL,
     difficulty INT CHECK (difficulty BETWEEN 1 AND 10),
@@ -53,7 +52,6 @@ func ddlStrings() []string {
     name VARCHAR(255) NOT NULL,
     mode VARCHAR(50) NOT NULL CHECK (mode IN ('practice', 'exam', 'timed')),
     subject VARCHAR(255) NOT NULL,
-    tags TEXT[], 
     exam VARCHAR(255),
     language VARCHAR(255) NOT NULL,
     time_duration VARCHAR(50),
@@ -101,14 +99,25 @@ func ddlStrings() []string {
     PRIMARY KEY (qtest_id, question_id),
     FOREIGN KEY (qtest_id) REFERENCES qtests(id) ON DELETE CASCADE,
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE SET NULL 
-)`, `CREATE TABLE tags (
+)`,
+		`CREATE TABLE questiontags (
   id SERIAL PRIMARY KEY,
   name TEXT UNIQUE NOT NULL
 );`,
-		`CREATE TABLE question_tags (
+		`CREATE TABLE questionsettags (
+  id SERIAL PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL
+);`,
+		`CREATE TABLE question_questiontags (
   question_id INT REFERENCES questions(id) ON DELETE CASCADE,
-  tag_id INT REFERENCES tags(id) ON DELETE CASCADE,
-  PRIMARY KEY (question_id, tag_id)
+  questiontags_id INT REFERENCES questiontags(id) ON DELETE CASCADE,
+  PRIMARY KEY (question_id, questiontags_id)
+);`,
+
+		`CREATE TABLE questionsets_questionsettags (
+  questionset_id INT REFERENCES question_sets(id) ON DELETE CASCADE,
+  questionsettags_id INT REFERENCES questionsettags(id) ON DELETE CASCADE,
+  PRIMARY KEY (questionset_id, questionsettags_id)
 );`,
 		`CREATE TABLE user_daily_activity (
   user_id INT REFERENCES users(id) ON DELETE CASCADE,

@@ -1,95 +1,115 @@
 package models
 
-import (
-	"github.com/google/uuid"
-	"github.com/lib/pq"
-	"time"
-)
+import "time"
 
-// User model
 type User struct {
-	ID                int       `json:"id"`
-	Name              string    `json:"name"`
-	Email             string    `json:"email"`
-	Password          string    `json:"password"`
-	Role              string    `json:"role"`
-	PasswordChangedAt time.Time `json:"passwordChangedAt"`
-	Verified          *bool     `json:"verified"`
-	LinkedIn          *string   `json:"linkedIn"`
-	Facebook          *string   `json:"facebook"`
-	Instagram         *string   `json:"instagram"`
-	ProfilePic        *string   `json:"profilePic"`
-	About             *string   `json:"about"`
-	CreatedAt         time.Time `json:"createdAt"`
-	UpdatedAt         time.Time `json:"updatedAt"`
+	ID                int       `json:"id" db:"id"`
+	Name              string    `json:"name" db:"name"`
+	Email             string    `json:"email" db:"email"`
+	Password          string    `json:"password" db:"password"`
+	Role              string    `json:"role" db:"role"`
+	PasswordChangedAt time.Time `json:"password_changed_at" db:"password_changed_at"`
+	Verified          bool      `json:"verified" db:"verified"`
+	LinkedIn          *string   `json:"linkedin,omitempty" db:"linkedin"`
+	Facebook          *string   `json:"facebook,omitempty" db:"facebook"`
+	Instagram         *string   `json:"instagram,omitempty" db:"instagram"`
+	ProfilePic        *string   `json:"profile_pic,omitempty" db:"profile_pic"`
+	About             *string   `json:"about,omitempty" db:"about"`
+	Deleted           bool      `json:"deleted" db:"deleted"`
+	CreatedAt         time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
 }
 
-// Question model
 type Question struct {
-	ID             int            `json:"id"`
-	Question       string         `json:"question"`
-	Subject        string         `json:"subject"`
-	Tags           pq.StringArray `json:"tags"`
-	Exam           *string        `json:"exam"`
-	Language       string         `json:"language"`
-	Difficulty     int            `json:"difficulty"`
-	QuestionType   string         `json:"questionType"`
-	Options        pq.StringArray `json:"options"`
-	CorrectOptions int            `json:"correctOptions"`
-	Explanation    *string        `json:"explanation"`
-	CreatedByID    int            `json:"createdById"`
-	CreatedAt      time.Time      `json:"createdAt"`
-	UpdatedAt      time.Time      `json:"updatedAt"`
+	ID            int       `json:"id" db:"id"`
+	Question      string    `json:"question" db:"question"`
+	Subject       string    `json:"subject" db:"subject"`
+	Exam          *string   `json:"exam,omitempty" db:"exam"`
+	Language      string    `json:"language" db:"language"`
+	Difficulty    int       `json:"difficulty" db:"difficulty"`
+	QuestionType  string    `json:"question_type" db:"question_type"`
+	Options       []string  `json:"options" db:"options"`
+	CorrectOption int       `json:"correct_options" db:"correct_options"`
+	Explanation   *string   `json:"explanation,omitempty" db:"explanation"`
+	CreatedByID   int       `json:"created_by_id" db:"created_by_id"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
 }
 
-// QuestionSet model
-type QuestionSet struct {
-	ID           int            `json:"id"`
-	Name         string         `json:"name"`
-	Mode         string         `json:"mode"`
-	Subject      string         `json:"subject"`
-	Tags         pq.StringArray `json:"tags"`
-	Exam         *string        `json:"exam"`
-	Language     string         `json:"language"`
-	TimeDuration *string        `json:"timeDuration"`
-	Difficulty   int            `json:"difficulty"`
-	Description  *string        `json:"description"`
-	CreatedByID  int            `json:"createdById"`
-	CreatedAt    time.Time      `json:"createdAt"`
-	UpdatedAt    time.Time      `json:"updatedAt"`
-}
-
-// QTest model
-type QTest struct {
-	ID                 uuid.UUID        `json:"id"`
-	Finished           bool             `json:"finished"`
-	Started            bool             `json:"started"`
-	Name               string           `json:"name"`
-	Tags               pq.StringArray   `json:"tags"`
-	QuestionSetID      uuid.UUID        `json:"questionSetId"`
-	TakenByID          uuid.UUID        `json:"takenById"`
-	NTotalQuestions    int              `json:"nTotalQuestions"`
-	AllQuestionsIDs    map[string][]int `json:"allQuestionsIds"`
-	CurrentQuestionNum int              `json:"currentQuestionNum"`
-	QuestionIDsOrdered pq.StringArray   `json:"questionIdsOrdered"`
-	NCorrectlyAnswered int              `json:"nCorrectlyAnswered"`
-	Rank               *int             `json:"rank"`
-	TakenAtTime        time.Time        `json:"takenAtTime"`
-	Mode               string           `json:"mode"`
-}
-
-// Many-to-many relationships
 type UserQuestionEditor struct {
-	UserID     int `json:"userId"`
-	QuestionID int `json:"questionId"`
+	UserID     int `json:"user_id" db:"user_id"`
+	QuestionID int `json:"question_id" db:"question_id"`
+}
+
+type QuestionSet struct {
+	ID           int       `json:"id" db:"id"`
+	Name         string    `json:"name" db:"name"`
+	Mode         string    `json:"mode" db:"mode"`
+	Subject      string    `json:"subject" db:"subject"`
+	Exam         *string   `json:"exam,omitempty" db:"exam"`
+	Language     string    `json:"language" db:"language"`
+	TimeDuration *string   `json:"time_duration,omitempty" db:"time_duration"`
+	Difficulty   *int      `json:"difficulty,omitempty" db:"difficulty"`
+	Description  *string   `json:"description,omitempty" db:"description"`
+	CreatedByID  int       `json:"created_by_id" db:"created_by_id"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type UserQuestionSetEditor struct {
-	UserID        int `json:"userId"`
-	QuestionSetID int `json:"questionSetId"`
+	UserID        int `json:"user_id" db:"user_id"`
+	QuestionSetID int `json:"question_set_id" db:"question_set_id"`
 }
 
 type QuestionSetQuestion struct {
-	QuestionSetID int `json:"questionSetId"`
-	QuestionID    int `json:"questionId"`
+	QuestionSetID int `json:"question_set_id" db:"question_set_id"`
+	QuestionID    int `json:"question_id" db:"question_id"`
+}
+
+type QTest struct {
+	ID                 string    `json:"id" db:"id"` // UUID
+	Finished           bool      `json:"finished" db:"finished"`
+	Started            bool      `json:"started" db:"started"`
+	Name               string    `json:"name" db:"name"`
+	Tags               []string  `json:"tags" db:"tags"`
+	QuestionSetID      int       `json:"question_set_id" db:"question_set_id"`
+	TakenByID          int       `json:"taken_by_id" db:"taken_by_id"`
+	NTotalQuestions    int       `json:"n_total_questions" db:"n_total_questions"`
+	CurrentQuestionNum int       `json:"current_question_num" db:"current_question_num"`
+	NCorrectlyAnswered int       `json:"n_correctly_answered" db:"n_correctly_answered"`
+	Rank               *int      `json:"rank,omitempty" db:"rank"`
+	TakenAtTime        time.Time `json:"taken_at_time" db:"taken_at_time"`
+	Mode               string    `json:"mode" db:"mode"`
+}
+
+type QTestQuestion struct {
+	QTestID    string `json:"qtest_id" db:"qtest_id"`
+	QuestionID int    `json:"question_id" db:"question_id"`
+}
+
+type QuestionTag struct {
+	ID   int    `json:"id" db:"id"`
+	Name string `json:"name" db:"name"`
+}
+
+type QuestionSetTag struct {
+	ID   int    `json:"id" db:"id"`
+	Name string `json:"name" db:"name"`
+}
+
+type QuestionToTag struct {
+	QuestionID    int `json:"question_id" db:"question_id"`
+	QuestionTagID int `json:"questiontags_id" db:"questiontags_id"`
+}
+
+type QuestionSetToTag struct {
+	QuestionSetID    int `json:"questionset_id" db:"questionset_id"`
+	QuestionSetTagID int `json:"questionsettags_id" db:"questionsettags_id"`
+}
+
+type UserDailyActivity struct {
+	UserID            int       `json:"user_id" db:"user_id"`
+	ActivityDate      time.Time `json:"activity_date" db:"activity_date"`
+	QuestionsAnswered int       `json:"questions_answered" db:"questions_answered"`
+	TestsCompleted    int       `json:"tests_completed" db:"tests_completed"`
 }
