@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"database/sql"
 	"fmt"
 	"github.com/ShijuPJohn/synapticz_backend/models"
 	"github.com/ShijuPJohn/synapticz_backend/util"
@@ -38,9 +39,7 @@ func CreateUser(c *fiber.Ctx) error {
 		return c.Status(400).SendString(err.Error())
 	}
 
-	if u.Role == "" {
-		u.Role = "user"
-	}
+	u.Role = "user"
 	u.PasswordChangedAt = time.Now()
 
 	validate := validator.New()
@@ -61,8 +60,8 @@ func CreateUser(c *fiber.Ctx) error {
 	u.Password = string(hash)
 
 	query := `INSERT INTO users 
-	(name, email, password, role, password_changed_at, linkedin, facebook, instagram, profile_pic, about)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	(name, email, password, role, linkedin, facebook, instagram, profile_pic, about)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	RETURNING id`
 
 	err = util.DB.QueryRow(
@@ -71,7 +70,6 @@ func CreateUser(c *fiber.Ctx) error {
 		u.Email,
 		u.Password,
 		u.Role,
-		u.PasswordChangedAt,
 		u.LinkedIn,
 		u.Facebook,
 		u.Instagram,
@@ -98,6 +96,136 @@ func CreateUser(c *fiber.Ctx) error {
 		"message": "User Created",
 		"token":   token,
 		"user_id": u.ID,
+	})
+}
+
+func LoginUser(c *fiber.Ctx) error {
+	type LoginInput struct {
+		Email    string `json:"email" validate:"required,email"`
+		Password string `json:"password" validate:"required"`
+	}
+
+	var input LoginInput
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Invalid request body",
+		})
+	}
+
+	validate := validator.New()
+	if err := validate.Struct(input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": err.Error(),
+		})
+	}
+
+	var user models.User
+	query := `
+	SELECT id, name, email, password, role, password_changed_at, verified, linkedin, facebook, instagram, profile_pic, about 
+	FROM users 
+	WHERE email = $1 AND deleted = false
+	LIMIT 1
+	`
+
+	err := util.DB.QueryRow(query, input.Email).Scan(
+		&user.ID,
+		&user.Name,
+		&user.Email,
+		&user.Password,
+		&user.Role,
+		&user.PasswordChangedAt,
+		&user.Verified,
+		&user.LinkedIn,
+		&user.Facebook,
+		&user.Instagram,
+		&user.ProfilePic,
+		&user.About,
+	)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Invalid email or password",
+		})
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Invalid email or password",
+		})
+	}
+
+	token, err := util.JwtGenerate(user, strconv.Itoa(int(user.ID)))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Could not generate token",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": "Logged in successfully",
+		"token":   token,
+		"user_id": user.ID,
+	})
+}
+
+func GetUserDetails(c *fiber.Ctx) error {
+	// Get user ID from URL params
+	paramID := c.Params("id")
+	requestedID, err := strconv.Atoi(paramID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Invalid user ID in URL",
+		})
+	}
+
+	// Get user from context (set by middleware)
+	authenticatedUser := c.Locals("user").(models.User)
+
+	// Check if the user is requesting their own details
+	if int(authenticatedUser.ID) != requestedID {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"status":  "error",
+			"message": "You are not authorized to view this user's details",
+		})
+	}
+
+	// Fetch user details from DB manually
+	var user models.User
+	query := `SELECT id, name, email, role, password_changed_at, verified, linkedin, facebook, instagram, profile_pic, about, deleted, created_at, updated_at 
+			  FROM users WHERE id = $1 AND deleted = false`
+
+	row := util.DB.QueryRow(query, requestedID)
+	err = row.Scan(
+		&user.ID, &user.Name, &user.Email, &user.Role, &user.PasswordChangedAt,
+		&user.Verified, &user.LinkedIn, &user.Facebook, &user.Instagram,
+		&user.ProfilePic, &user.About, &user.Deleted, &user.CreatedAt, &user.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"status":  "error",
+				"message": "User not found",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Database error",
+			"error":   err.Error(),
+		})
+	}
+
+	// Remove sensitive fields like password
+	user.Password = ""
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"user":   user,
 	})
 }
 

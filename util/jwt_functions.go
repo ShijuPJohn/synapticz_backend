@@ -14,6 +14,7 @@ func JwtGenerate(user models.User, id string) (string, error) {
 	claims["email"] = user.Email
 	claims["role"] = user.Role
 	claims["id"] = id
+	claims["iat"] = time.Now().Unix()
 	claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
 	claims["issued"] = time.Now().Unix()
 	t, err := token.SignedString([]byte(JWTSecret))
@@ -27,7 +28,6 @@ func VerifyJwtToken(tokenString string) (jwt.MapClaims, error) {
 	if len(tokenString) > 6 && tokenString[:7] == "Bearer " {
 		tokenString = tokenString[7:]
 	}
-	fmt.Println("tokenString:", tokenString)
 
 	// Parse the token
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
@@ -36,8 +36,6 @@ func VerifyJwtToken(tokenString string) (jwt.MapClaims, error) {
 		}
 		return []byte(JWTSecret), nil
 	})
-	fmt.Println("token parsed")
-	fmt.Println(token)
 
 	if err != nil {
 		return nil, err
@@ -54,19 +52,19 @@ func VerifyJwtToken(tokenString string) (jwt.MapClaims, error) {
 
 // Function to check if the token was issued before the password was changed
 func IsTokenValid(claims jwt.MapClaims, user models.User) error {
-	// Extract issued_at claim from token (assuming it's a Unix timestamp)
-	issuedAt, ok := claims["issued"].(float64)
+	issuedAtUnix, ok := claims["iat"].(float64)
 	if !ok {
-		return errors.New("invalid token: missing issued_at claim")
+		return errors.New("invalid token: no issued at timestamp")
 	}
 
-	// Convert issued_at to time.Time
-	issuedAtTime := time.Unix(int64(issuedAt), 0)
+	issuedAt := time.Unix(int64(issuedAtUnix), 0)
+	passwordChangedAt := user.PasswordChangedAt
 
-	// Compare with PasswordChangedAt
-	if user.PasswordChangedAt.After(issuedAtTime) {
+	fmt.Println("Issued At:", issuedAt, "| Unix:", issuedAt.Unix())
+	fmt.Println("Password Changed At:", passwordChangedAt, "| Unix:", passwordChangedAt.Unix())
+
+	if passwordChangedAt.After(issuedAt) {
 		return errors.New("token invalid: password was changed after the token was issued")
 	}
-
 	return nil
 }

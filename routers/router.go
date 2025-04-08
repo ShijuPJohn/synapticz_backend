@@ -2,6 +2,7 @@ package routers
 
 import (
 	"github.com/ShijuPJohn/synapticz_backend/controllers"
+	"github.com/ShijuPJohn/synapticz_backend/middlewares"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -16,8 +17,8 @@ func SetupRoutes(app *fiber.App) {
 	auth := api.Group("/auth")
 	//auth.Get("/users", controllers.GetAllUsers)
 	auth.Post("/users", controllers.CreateUser)
-	//auth.Post("/login", controllers.LoginUser)
-	//auth.Get("/users/:id", middlewares.Protected(), controllers.GetUserDetails)
+	auth.Post("/login", controllers.LoginUser)
+	auth.Get("/users/:id", middlewares.Protected(), controllers.GetUserDetails)
 	////
 	////// Questions
 	//questions := api.Group("/questions")
