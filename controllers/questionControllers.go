@@ -372,33 +372,88 @@ func GetQuestionByID(c *fiber.Ctx) error {
 	})
 }
 
-//func GetQuestionByID(c *fiber.Ctx) error {
-//	// Get the question ID from the request parameters
-//	idParam := c.Params("id")
-//	qID, err := primitive.ObjectIDFromHex(idParam)
-//	if err != nil {
-//		return handleError(c, fiber.StatusBadRequest, err.Error())
-//	}
-//
-//	// Define a filter to find the question by its ID
-//	filter := bson.M{"_id": qID}
-//
-//	// Find the question in the database
-//	var question models.Question
-//	err = utils.Mg.Db.Collection("questions").FindOne(c.Context(), filter).Decode(&question)
-//	if err != nil {
-//		if err.Error() == "mongo: no documents in result" {
-//			return handleError(c, fiber.StatusNotFound, "Question not found")
-//		}
-//		return handleError(c, fiber.StatusInternalServerError, err.Error())
-//	}
-//
-//	// Return the question
-//	return c.Status(fiber.StatusOK).JSON(fiber.Map{"question": question})
-//}
-//func handleError(c *fiber.Ctx, statusCode int, errorMessage string) error {
-//	return c.Status(statusCode).JSON(fiber.Map{
-//		"status":  "error",
-//		"message": errorMessage,
-//	})
-//}
+func DeleteQuestion(c *fiber.Ctx) error {
+	db := util.DB
+
+	// Get question ID from URL
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Question ID is required",
+		})
+	}
+
+	user := c.Locals("user").(models.User)
+
+	// Check if question exists and get creator
+	var createdByID int
+	err := db.QueryRow("SELECT created_by_id FROM questions WHERE id = $1", id).Scan(&createdByID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Question not found",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Database error",
+			"error":   err.Error(),
+		})
+	}
+
+	// Authorization check
+	if user.ID != createdByID && user.Role != "admin" && user.Role != "owner" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"status":  "error",
+			"message": "You are not authorized to delete this question",
+		})
+	}
+
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Failed to start transaction",
+			"error":   err.Error(),
+		})
+	}
+
+	// Delete tag associations
+	_, err = tx.Exec("DELETE FROM question_questiontags WHERE question_id = $1", id)
+	if err != nil {
+		tx.Rollback()
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Failed to delete tag associations",
+			"error":   err.Error(),
+		})
+	}
+
+	// Delete the question
+	_, err = tx.Exec("DELETE FROM questions WHERE id = $1", id)
+	if err != nil {
+		tx.Rollback()
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Failed to delete question",
+			"error":   err.Error(),
+		})
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Failed to commit transaction",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": "Question deleted successfully",
+	})
+}
