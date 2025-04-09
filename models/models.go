@@ -21,19 +21,20 @@ type User struct {
 }
 
 type Question struct {
-	ID            int       `json:"id" db:"id"`
-	Question      string    `json:"question" db:"question"`
-	Subject       string    `json:"subject" db:"subject"`
-	Exam          *string   `json:"exam,omitempty" db:"exam"`
-	Language      string    `json:"language" db:"language"`
-	Difficulty    int       `json:"difficulty" db:"difficulty"`
-	QuestionType  string    `json:"question_type" db:"question_type"`
-	Options       []string  `json:"options" db:"options"`
-	CorrectOption int       `json:"correct_options" db:"correct_options"`
-	Explanation   *string   `json:"explanation,omitempty" db:"explanation"`
-	CreatedByID   int       `json:"created_by_id" db:"created_by_id"`
-	CreatedAt     time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
+	ID             int       `json:"id" db:"id"`
+	Question       string    `json:"question" db:"question"`
+	Subject        string    `json:"subject" db:"subject"`
+	Exam           *string   `json:"exam,omitempty" db:"exam"`
+	Language       string    `json:"language" db:"language"`
+	Tags           []string  `json:"tags" db:"tags"`
+	Difficulty     int       `json:"difficulty" db:"difficulty"`
+	QuestionType   string    `json:"question_type" db:"question_type"`
+	Options        []string  `json:"options" db:"options"`
+	CorrectOptions []int     `json:"correct_options" db:"correct_options"`
+	Explanation    *string   `json:"explanation,omitempty" db:"explanation"`
+	CreatedByID    int       `json:"created_by_id" db:"created_by_id"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type UserQuestionEditor struct {
@@ -42,18 +43,19 @@ type UserQuestionEditor struct {
 }
 
 type QuestionSet struct {
-	ID           int       `json:"id" db:"id"`
-	Name         string    `json:"name" db:"name"`
-	Mode         string    `json:"mode" db:"mode"`
-	Subject      string    `json:"subject" db:"subject"`
-	Exam         *string   `json:"exam,omitempty" db:"exam"`
-	Language     string    `json:"language" db:"language"`
-	TimeDuration *string   `json:"time_duration,omitempty" db:"time_duration"`
-	Difficulty   *int      `json:"difficulty,omitempty" db:"difficulty"`
-	Description  *string   `json:"description,omitempty" db:"description"`
-	CreatedByID  int       `json:"created_by_id" db:"created_by_id"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
+	ID                 int       `json:"id" db:"id"`
+	Name               string    `json:"name" db:"name"`
+	Mode               string    `json:"mode" db:"mode"`
+	Subject            string    `json:"subject" db:"subject"`
+	Exam               *string   `json:"exam,omitempty" db:"exam"`
+	Language           string    `json:"language" db:"language"`
+	AssociatedResource *string   `json:"associatedResource" db:"associatedResource"`
+	TimeDuration       *string   `json:"time_duration,omitempty" db:"time_duration"`
+	Difficulty         *int      `json:"difficulty,omitempty" db:"difficulty"`
+	Description        *string   `json:"description,omitempty" db:"description"`
+	CreatedByID        int       `json:"created_by_id" db:"created_by_id"`
+	CreatedAt          time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type UserQuestionSetEditor struct {

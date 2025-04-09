@@ -33,7 +33,7 @@ func ddlStrings() []string {
     difficulty INT CHECK (difficulty BETWEEN 1 AND 10),
     question_type VARCHAR(50) NOT NULL CHECK (question_type IN ('m-choice', 'm-select', 'numeric')),
     options TEXT[] NOT NULL,
-    correct_options INT NOT NULL,
+    correct_options INT[] NOT NULL,
     explanation TEXT,
     created_by_id INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -57,6 +57,7 @@ func ddlStrings() []string {
     time_duration VARCHAR(50),
     difficulty INT CHECK (difficulty BETWEEN 1 AND 10),
     description TEXT,
+    associated_resource TEXT,
     created_by_id INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -81,7 +82,6 @@ func ddlStrings() []string {
     finished BOOLEAN DEFAULT FALSE,
     started BOOLEAN DEFAULT FALSE,
     name VARCHAR(255) NOT NULL,
-    tags TEXT[], 
     question_set_id INT NOT NULL,
     taken_by_id INT NOT NULL,
     n_total_questions INT NOT NULL,
@@ -93,33 +93,33 @@ func ddlStrings() []string {
     FOREIGN KEY (question_set_id) REFERENCES question_sets(id) ON DELETE CASCADE,
     FOREIGN KEY (taken_by_id) REFERENCES users(id) ON DELETE CASCADE
 )`,
-		`CREATE TABLE IF NOT EXISTS  qtest_questions (
+		`CREATE TABLE IF NOT EXISTS qtest_questions (
     qtest_id uuid NOT NULL,
     question_id INT,
     PRIMARY KEY (qtest_id, question_id),
     FOREIGN KEY (qtest_id) REFERENCES qtests(id) ON DELETE CASCADE,
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE SET NULL 
 )`,
-		`CREATE TABLE questiontags (
+		`CREATE TABLE  IF NOT EXISTS  questiontags (
   id SERIAL PRIMARY KEY,
   name TEXT UNIQUE NOT NULL
 );`,
-		`CREATE TABLE questionsettags (
+		`CREATE TABLE IF NOT EXISTS questionsettags (
   id SERIAL PRIMARY KEY,
   name TEXT UNIQUE NOT NULL
 );`,
-		`CREATE TABLE question_questiontags (
+		`CREATE TABLE IF NOT EXISTS question_questiontags (
   question_id INT REFERENCES questions(id) ON DELETE CASCADE,
   questiontags_id INT REFERENCES questiontags(id) ON DELETE CASCADE,
   PRIMARY KEY (question_id, questiontags_id)
 );`,
 
-		`CREATE TABLE questionsets_questionsettags (
+		`CREATE TABLE IF NOT EXISTS questionsets_questionsettags (
   questionset_id INT REFERENCES question_sets(id) ON DELETE CASCADE,
   questionsettags_id INT REFERENCES questionsettags(id) ON DELETE CASCADE,
   PRIMARY KEY (questionset_id, questionsettags_id)
 );`,
-		`CREATE TABLE user_daily_activity (
+		`CREATE TABLE IF NOT EXISTS   user_daily_activity (
   user_id INT REFERENCES users(id) ON DELETE CASCADE,
   activity_date DATE NOT NULL,
   questions_answered INT DEFAULT 0,
@@ -141,7 +141,11 @@ func CreateTableIfNotExists() error {
 }
 func dropTables() []string {
 	return []string{
-		"DROP TABLE IF EXISTS question_tags",
+		"DROP TABLE IF EXISTS questionsets_questionsettags",
+		"DROP TABLE IF EXISTS user_daily_activity",
+		"DROP TABLE IF EXISTS question_questiontags",
+		"DROP TABLE IF EXISTS questionsettags",
+		"DROP TABLE IF EXISTS questiontags",
 		"DROP TABLE IF EXISTS tags",
 		"DROP TABLE IF EXISTS qtest_questions",
 		"DROP TABLE IF EXISTS qtests",
@@ -151,6 +155,5 @@ func dropTables() []string {
 		"DROP TABLE IF EXISTS user_questions_editors",
 		"DROP TABLE IF EXISTS questions",
 		"DROP TABLE IF EXISTS users",
-		"DROP TABLE IF EXISTS user_daily_activity",
 	}
 }

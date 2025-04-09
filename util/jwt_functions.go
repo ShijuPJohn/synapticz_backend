@@ -2,7 +2,6 @@ package util
 
 import (
 	"errors"
-	"fmt"
 	"github.com/ShijuPJohn/synapticz_backend/models"
 	"github.com/golang-jwt/jwt/v4"
 	"time"
@@ -43,7 +42,6 @@ func VerifyJwtToken(tokenString string) (jwt.MapClaims, error) {
 
 	// Extract claims if the token is valid
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		fmt.Println("claims", claims)
 		return claims, nil
 	}
 
@@ -60,10 +58,7 @@ func IsTokenValid(claims jwt.MapClaims, user models.User) error {
 	issuedAt := time.Unix(int64(issuedAtUnix), 0)
 	passwordChangedAt := user.PasswordChangedAt
 
-	fmt.Println("Issued At:", issuedAt, "| Unix:", issuedAt.Unix())
-	fmt.Println("Password Changed At:", passwordChangedAt, "| Unix:", passwordChangedAt.Unix())
-
-	if passwordChangedAt.After(issuedAt) {
+	if passwordChangedAt.Unix() > issuedAt.Unix() {
 		return errors.New("token invalid: password was changed after the token was issued")
 	}
 	return nil
