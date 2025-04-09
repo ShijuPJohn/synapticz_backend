@@ -21,12 +21,12 @@ func SetupRoutes(app *fiber.App) {
 	auth.Get("/users/:id", middlewares.Protected(), controllers.GetUserDetails)
 	////
 	////// Questions
-	//questions := api.Group("/questions")
-	//questions.Post("/", middlewares.Protected(), controllers.CreateQuestion)
-	//questions.Get("/", controllers.GetQuestions)
+	questions := api.Group("/questions")
+	questions.Post("/", middlewares.Protected(), controllers.CreateQuestion)
+	questions.Get("/", controllers.GetQuestions)
 
 	//questions.Patch("/:id", middlewares.Protected(), controllers.EditQuestion)
-	//questions.Get("/:id", middlewares.Protected(), controllers.GetQuestionByID)
+	questions.Get("/:id", middlewares.Protected(), controllers.GetQuestionByID)
 	//questions.Delete("/:id", middlewares.Protected(), controllers.DeleteQuestion)
 	//
 	//questionSet := api.Group("/questionsets")
