@@ -29,8 +29,8 @@ func SetupRoutes(app *fiber.App) {
 	questions.Get("/:id", middlewares.Protected(), controllers.GetQuestionByID)
 	questions.Delete("/:id", middlewares.Protected(), controllers.DeleteQuestion)
 	//
-	//questionSet := api.Group("/questionsets")
-	//questionSet.Post("/", middlewares.Protected(), controllers.CreateQuestionSet)
+	questionSet := api.Group("/questionsets")
+	questionSet.Post("/", middlewares.Protected(), controllers.CreateQuestionSet)
 	//questionSet.Get("/", controllers.GetQuestionSets)
 	//questionSet.Patch("/:id", middlewares.Protected(), controllers.EditQuestionSet)
 	//questionSet.Get("/:id", controllers.GetQuestionSetByID)
