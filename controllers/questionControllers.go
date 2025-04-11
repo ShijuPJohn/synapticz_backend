@@ -27,122 +27,129 @@ func CreateQuestion(c *fiber.Ctx) error {
 		})
 	}
 
-	var question models.Question
-	if err := c.BodyParser(&question); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Failed to parse request body",
-			"error":   err.Error(),
-		})
+	body := c.Body()
+
+	// Try parsing as an array first
+	var questions []models.Question
+	if err := json.Unmarshal(body, &questions); err != nil {
+		// Try parsing as a single question
+		var single models.Question
+		if err := json.Unmarshal(body, &single); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to parse request body",
+				"error":   err.Error(),
+			})
+		}
+		questions = append(questions, single)
 	}
 
-	// Validate fields (excluding tags relationship)
-	err := validate.Struct(struct {
-		Question       string   `json:"question" validate:"required"`
-		Subject        string   `json:"subject" validate:"required"`
-		Tags           []string `json:"tags"`
-		Exam           *string  `json:"exam"`
-		Language       string   `json:"language" validate:"required"`
-		Difficulty     int      `json:"difficulty" validate:"oneof=1 2 3 4 5 6 7 8 9 10"`
-		QuestionType   string   `json:"question_type" validate:"oneof=m-choice m-select numeric"`
-		Options        []string `json:"options" validate:"required"`
-		CorrectOptions []int    `json:"correct_options" validate:"required"`
-		Explanation    *string  `json:"explanation"`
-	}{
-		Question:       question.Question,
-		Subject:        question.Subject,
-		Tags:           question.Tags,
-		Exam:           question.Exam,
-		Language:       question.Language,
-		Difficulty:     question.Difficulty,
-		QuestionType:   question.QuestionType,
-		Options:        question.Options,
-		CorrectOptions: question.CorrectOptions,
-		Explanation:    question.Explanation,
-	})
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Validation failed",
-			"error":   err.Error(),
-		})
-	}
-
-	question.CreatedByID = user.ID
-	question.CreatedAt = time.Now()
-	question.UpdatedAt = time.Now()
-	fmt.Println(question.CorrectOptions)
 	tx, err := db.Begin()
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to start transaction"})
 	}
 	defer tx.Rollback()
 
-	// Step 1: Insert into questions
-	insertQuery := `
-		INSERT INTO questions (
+	createdQuestions := []int{}
+
+	for _, question := range questions {
+		// Validation
+		err := validate.Struct(struct {
+			Question       string   `json:"question" validate:"required"`
+			Subject        string   `json:"subject" validate:"required"`
+			Tags           []string `json:"tags"`
+			Exam           *string  `json:"exam"`
+			Language       string   `json:"language" validate:"required"`
+			Difficulty     int      `json:"difficulty" validate:"oneof=1 2 3 4 5 6 7 8 9 10"`
+			QuestionType   string   `json:"question_type" validate:"oneof=m-choice m-select numeric"`
+			Options        []string `json:"options" validate:"required"`
+			CorrectOptions []int    `json:"correct_options" validate:"required"`
+			Explanation    *string  `json:"explanation"`
+		}{
+			Question:       question.Question,
+			Subject:        question.Subject,
+			Tags:           question.Tags,
+			Exam:           question.Exam,
+			Language:       question.Language,
+			Difficulty:     question.Difficulty,
+			QuestionType:   question.QuestionType,
+			Options:        question.Options,
+			CorrectOptions: question.CorrectOptions,
+			Explanation:    question.Explanation,
+		})
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Validation failed",
+				"error":   err.Error(),
+			})
+		}
+
+		question.CreatedByID = user.ID
+		question.CreatedAt = time.Now()
+		question.UpdatedAt = time.Now()
+
+		// Insert into questions table
+		insertQuery := `INSERT INTO questions (
 			question, subject, exam, language, difficulty,
 			question_type, options, correct_options, explanation,
 			created_by_id, created_at, updated_at
 		)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-		RETURNING id
-	`
+		RETURNING id`
 
-	var questionID string
-	err = tx.QueryRow(
-		insertQuery,
-		question.Question,
-		question.Subject,
-		question.Exam,
-		question.Language,
-		question.Difficulty,
-		question.QuestionType,
-		pq.Array(question.Options),
-		pq.Array(question.CorrectOptions),
-		question.Explanation,
-		question.CreatedByID,
-		question.CreatedAt,
-		question.UpdatedAt,
-	).Scan(&questionID)
+		var questionID string
+		err = tx.QueryRow(
+			insertQuery,
+			question.Question,
+			question.Subject,
+			question.Exam,
+			question.Language,
+			question.Difficulty,
+			question.QuestionType,
+			pq.Array(question.Options),
+			pq.Array(question.CorrectOptions),
+			question.Explanation,
+			question.CreatedByID,
+			question.CreatedAt,
+			question.UpdatedAt,
+		).Scan(&questionID)
 
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to insert question", "details": err.Error()})
-	}
-
-	// Step 2: Handle Tags
-	for _, tagName := range question.Tags {
-		var tagID string
-
-		// Check if tag exists
-		err = tx.QueryRow("SELECT id FROM questiontags WHERE name = $1", tagName).Scan(&tagID)
-		if err == sql.ErrNoRows {
-			// Insert new tag
-			err = tx.QueryRow("INSERT INTO questiontags (name) VALUES ($1) RETURNING id", tagName).Scan(&tagID)
-			if err != nil {
-				return c.Status(500).JSON(fiber.Map{"error": "Failed to insert tag", "details": err.Error()})
-			}
-		} else if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch tag", "details": err.Error()})
-		}
-
-		// Insert into question_tags junction
-		_, err = tx.Exec("INSERT INTO question_questiontags (question_id, questiontags_id) VALUES ($1, $2)", questionID, tagID)
 		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "Failed to link question and tag", "details": err.Error()})
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to insert question", "details": err.Error()})
 		}
+
+		// Handle tags
+		for _, tagName := range question.Tags {
+			var tagID string
+			err = tx.QueryRow("SELECT id FROM questiontags WHERE name = $1", tagName).Scan(&tagID)
+			if err == sql.ErrNoRows {
+				err = tx.QueryRow("INSERT INTO questiontags (name) VALUES ($1) RETURNING id", tagName).Scan(&tagID)
+				if err != nil {
+					return c.Status(500).JSON(fiber.Map{"error": "Failed to insert tag", "details": err.Error()})
+				}
+			} else if err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch tag", "details": err.Error()})
+			}
+
+			_, err = tx.Exec("INSERT INTO question_questiontags (question_id, questiontags_id) VALUES ($1, $2)", questionID, tagID)
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": "Failed to link question and tag", "details": err.Error()})
+			}
+		}
+
+		question.ID, _ = strconv.Atoi(questionID)
+		createdQuestions = append(createdQuestions, question.ID)
 	}
 
 	if err = tx.Commit(); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to commit transaction", "details": err.Error()})
 	}
 
-	question.ID, _ = strconv.Atoi(questionID)
-
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"status":   "success",
-		"message":  "Question created successfully",
-		"question": question,
+		"status":    "success",
+		"message":   "Question(s) created successfully",
+		"questions": createdQuestions,
 	})
 }
 
