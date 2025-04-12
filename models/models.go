@@ -126,6 +126,7 @@ type TestSession struct {
 	CurrentQuestionNum int       `json:"current_question_num" db:"current_question_num"`
 	NCorrectlyAnswered int       `json:"n_correctly_answered" db:"n_correctly_answered"`
 	QuestionIDsOrdered []int     `json:"question_ids_ordered" db:"question_ids_ordered"` // PostgreSQL integer array
+	Marks              []int     `json:"marks" db:"marks"`
 	Rank               *int      `json:"rank,omitempty" db:"rank"`
 	TotalMarks         float64   `json:"total_marks" db:"total_marks"`
 	ScoredMarks        float64   `json:"scored_marks" db:"scored_marks"`

@@ -73,6 +73,7 @@ func ddlStrings() []string {
 		`CREATE TABLE IF NOT EXISTS  question_set_questions (
     question_set_id INT NOT NULL,
     question_id INT,
+    mark FLOAT default 1,
     PRIMARY KEY (question_set_id, question_id),
     FOREIGN KEY (question_set_id) REFERENCES question_sets(id) ON DELETE CASCADE ,
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE SET NULL 
@@ -88,6 +89,7 @@ func ddlStrings() []string {
     current_question_num INT NOT NULL,
     n_correctly_answered INT DEFAULT 0,
     rank INT,
+    marks FLOAT[],
     total_marks float default 0,
     scored_marks float default 0,
     started_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -106,13 +108,6 @@ func ddlStrings() []string {
   answered BOOLEAN DEFAULT FALSE,
   PRIMARY KEY (test_session_id, question_id)
 );`,
-		`CREATE TABLE IF NOT EXISTS testsession_questions (
-    test_sessions_id uuid NOT NULL,
-    question_id INT,
-    PRIMARY KEY (test_sessions_id, question_id),
-    FOREIGN KEY (test_sessions_id) REFERENCES test_sessions(id) ON DELETE CASCADE,
-    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE SET NULL 
-)`,
 		`CREATE TABLE  IF NOT EXISTS  questiontags (
   id SERIAL PRIMARY KEY,
   name TEXT UNIQUE NOT NULL

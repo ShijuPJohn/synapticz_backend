@@ -13,16 +13,17 @@ import (
 )
 
 type CreateQuestionSetInput struct {
-	Name               string   `json:"name"`
-	Mode               string   `json:"mode"`
-	Subject            string   `json:"subject"`
-	Exam               string   `json:"exam"`
-	Language           string   `json:"language"`
-	TimeDuration       int      `json:"time_duration"`
-	Description        string   `json:"description"`
-	AssociatedResource string   `json:"associated_resource"`
-	QuestionIDs        []string `json:"question_ids"`
-	Tags               []string `json:"tags"`
+	Name               string     `json:"name"`
+	Mode               string     `json:"mode"`
+	Subject            string     `json:"subject"`
+	Exam               string     `json:"exam"`
+	Language           string     `json:"language"`
+	TimeDuration       int        `json:"time_duration"`
+	Description        string     `json:"description"`
+	AssociatedResource string     `json:"associated_resource"`
+	QuestionIDs        []string   `json:"question_ids"`
+	Tags               []string   `json:"tags"`
+	Marks              *[]float64 `json:"marks"`
 }
 
 func CreateQuestionSet(c *fiber.Ctx) error {
@@ -72,14 +73,22 @@ func CreateQuestionSet(c *fiber.Ctx) error {
 			"error": "Failed to insert question set: " + err.Error(),
 		})
 	}
+	markSlice := []float64{}
+	if input.Marks != nil && len(*input.Marks) == len(input.QuestionIDs) {
+		markSlice = *input.Marks
+	} else {
+		for _, mark := range *input.Marks {
+			markSlice = append(markSlice, mark)
+		}
+	}
 
 	// Insert questions
 	insertQ := `
-		INSERT INTO question_set_questions (question_set_id, question_id)
-		VALUES ($1, $2)
+		INSERT INTO question_set_questions (question_set_id, question_id, mark)
+		VALUES ($1, $2, $3)
 	`
-	for _, qid := range input.QuestionIDs {
-		_, err := tx.Exec(insertQ, questionSetID, qid)
+	for i, qid := range input.QuestionIDs {
+		_, err := tx.Exec(insertQ, questionSetID, qid, markSlice[i])
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "Failed to associate question: " + err.Error(),
