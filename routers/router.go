@@ -19,8 +19,8 @@ func SetupRoutes(app *fiber.App) {
 	auth.Post("/users", controllers.CreateUser)
 	auth.Post("/login", controllers.LoginUser)
 	auth.Get("/users/:id", middlewares.Protected(), controllers.GetUserDetails)
-	////
-	////// Questions
+	//
+	// Questions
 	questions := api.Group("/questions")
 	questions.Post("/", middlewares.Protected(), controllers.CreateQuestion)
 	questions.Get("/", controllers.GetQuestions)
@@ -28,19 +28,18 @@ func SetupRoutes(app *fiber.App) {
 	//questions.Patch("/:id", middlewares.Protected(), controllers.EditQuestion)
 	questions.Get("/:id", middlewares.Protected(), controllers.GetQuestionByID)
 	questions.Delete("/:id", middlewares.Protected(), controllers.DeleteQuestion)
-	//
+
 	questionSet := api.Group("/questionsets")
 	questionSet.Post("/", middlewares.Protected(), controllers.CreateQuestionSet)
 	questionSet.Get("/", controllers.GetQuestionSets)
 	//questionSet.Patch("/:id", middlewares.Protected(), controllers.EditQuestionSet)
 	questionSet.Get("/:id", controllers.GetQuestionSetByID)
 	//questionSet.Delete("/:id", middlewares.Protected(), controllers.DeleteQuestionSet)
-	//
-	//qTest := api.Group("/qTest")
-	//qTest.Post("/", middlewares.Protected(), controllers.CreateQTest)
-	//qTest.Get("next/:id", middlewares.Protected(), controllers.QTestNextQuestion)
-	//qTest.Get("prev/:id", middlewares.Protected(), controllers.QTestPrevQuestion)
-	//qTest.Post("/:id", middlewares.Protected(), controllers.QTestAnswerQuestion)
-	//qTest.Get("/:id", middlewares.Protected(), controllers.QTestCurrent)
 
+	testSession := api.Group("/test_session")
+	testSession.Post("/", middlewares.Protected(), controllers.CreateTestSession)
+	//testSession.Get("/", middlewares.Protected(), controllers.GetTestSessionByUserID)
+	//testSession.Put("/finish/:test_session_id", middlewares.Protected(), controllers.FinishTestSession)
+	//testSession.Put("/:test_session_id", middlewares.Protected(), controllers.UpdateTestSession)
+	//testSession.Get("/:test_session_id", middlewares.Protected(), controllers.GetTestSession)
 }

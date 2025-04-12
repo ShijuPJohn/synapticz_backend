@@ -77,7 +77,7 @@ func ddlStrings() []string {
     FOREIGN KEY (question_set_id) REFERENCES question_sets(id) ON DELETE CASCADE ,
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE SET NULL 
 )`,
-		`CREATE TABLE  IF NOT EXISTS qtests (
+		`CREATE TABLE  IF NOT EXISTS test_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     finished BOOLEAN DEFAULT FALSE,
     started BOOLEAN DEFAULT FALSE,
@@ -88,16 +88,29 @@ func ddlStrings() []string {
     current_question_num INT NOT NULL,
     n_correctly_answered INT DEFAULT 0,
     rank INT,
-    taken_at_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    total_marks float default 0,
+    scored_marks float default 0,
+    started_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    finished_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     mode VARCHAR(50) NOT NULL CHECK (mode IN ('practice', 'exam', 'timed-practice')),
     FOREIGN KEY (question_set_id) REFERENCES question_sets(id) ON DELETE CASCADE,
     FOREIGN KEY (taken_by_id) REFERENCES users(id) ON DELETE CASCADE
 )`,
-		`CREATE TABLE IF NOT EXISTS qtest_questions (
-    qtest_id uuid NOT NULL,
+		`CREATE TABLE IF NOT EXISTS test_session_question_answers(
+  test_session_id UUID REFERENCES test_sessions(id) ON DELETE CASCADE,
+  question_id INT REFERENCES questions(id) ON DELETE SET NULL,
+  correct_answer_list INT[],
+  selected_answer_list INT[],
+  questions_total_mark FLOAT,
+  questions_scored_mark FLOAT,
+  answered BOOLEAN DEFAULT FALSE,
+  PRIMARY KEY (test_session_id, question_id)
+);`,
+		`CREATE TABLE IF NOT EXISTS testsession_questions (
+    test_sessions_id uuid NOT NULL,
     question_id INT,
-    PRIMARY KEY (qtest_id, question_id),
-    FOREIGN KEY (qtest_id) REFERENCES qtests(id) ON DELETE CASCADE,
+    PRIMARY KEY (test_sessions_id, question_id),
+    FOREIGN KEY (test_sessions_id) REFERENCES test_sessions(id) ON DELETE CASCADE,
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE SET NULL 
 )`,
 		`CREATE TABLE  IF NOT EXISTS  questiontags (
@@ -147,8 +160,8 @@ func dropTables() []string {
 		"DROP TABLE IF EXISTS questionsettags",
 		"DROP TABLE IF EXISTS questiontags",
 		"DROP TABLE IF EXISTS tags",
-		"DROP TABLE IF EXISTS qtest_questions",
-		"DROP TABLE IF EXISTS qtests",
+		"DROP TABLE IF EXISTS testsession_questions",
+		"DROP TABLE IF EXISTS test_sessions",
 		"DROP TABLE IF EXISTS question_set_questions",
 		"DROP TABLE IF EXISTS user_questionsets_editors",
 		"DROP TABLE IF EXISTS question_sets",
