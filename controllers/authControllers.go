@@ -104,7 +104,6 @@ func LoginUser(c *fiber.Ctx) error {
 		Email    string `json:"email" validate:"required,email"`
 		Password string `json:"password" validate:"required"`
 	}
-
 	var input LoginInput
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{

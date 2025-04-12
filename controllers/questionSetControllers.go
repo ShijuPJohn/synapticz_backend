@@ -156,9 +156,11 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		SELECT DISTINCT 
 			qs.id, qs.name, qs.mode, qs.subject, qs.exam, qs.language,
 			qs.time_duration, qs.description, qs.associated_resource,
-			qs.created_by_id, u.name as created_by_name, qs.created_at
+			qs.created_by_id, u.name as created_by_name, qs.created_at,
+			COUNT(qq.question_id) AS total_questions
 		FROM question_sets qs
 		JOIN users u ON qs.created_by_id = u.id
+		LEFT JOIN question_set_questions qq ON qs.id = qq.question_set_id
 		LEFT JOIN questionsets_questionsettags qst ON qs.id = qst.questionset_id
 		LEFT JOIN questionsettags t ON qst.questionsettags_id = t.id
 		WHERE 1=1
@@ -200,6 +202,12 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		argID++
 	}
 
+	query += `
+		GROUP BY 
+			qs.id, qs.name, qs.mode, qs.subject, qs.exam, qs.language,
+			qs.time_duration, qs.description, qs.associated_resource,
+			qs.created_by_id, u.name, qs.created_at
+	`
 	query += fmt.Sprintf(" ORDER BY qs.created_at DESC LIMIT $%d OFFSET $%d", argID, argID+1)
 	args = append(args, limit, offset)
 
@@ -224,6 +232,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		CreatedByID        string    `json:"created_by_id"`
 		CreatedByName      string    `json:"created_by_name"`
 		CreatedAt          time.Time `json:"created_at"`
+		TotalQuestions     int       `json:"total_questions"`
 	}
 
 	var results []QuestionSetResponse
@@ -243,6 +252,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 			&qs.CreatedByID,
 			&qs.CreatedByName,
 			&qs.CreatedAt,
+			&qs.TotalQuestions,
 		)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

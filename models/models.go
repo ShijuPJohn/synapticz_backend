@@ -115,3 +115,21 @@ type UserDailyActivity struct {
 	QuestionsAnswered int       `json:"questions_answered" db:"questions_answered"`
 	TestsCompleted    int       `json:"tests_completed" db:"tests_completed"`
 }
+type TestSession struct {
+	ID                 string    `json:"id" db:"id"` // UUID
+	Finished           bool      `json:"finished" db:"finished"`
+	Started            bool      `json:"started" db:"started"`
+	Name               string    `json:"name" db:"name"`
+	TakenByID          int       `json:"taken_by_id" db:"taken_by_id"`
+	QuestionSetID      int       `json:"question_set_id" db:"question_set_id"`
+	NTotalQuestions    int       `json:"n_total_questions" db:"n_total_questions"`
+	CurrentQuestionNum int       `json:"current_question_num" db:"current_question_num"`
+	NCorrectlyAnswered int       `json:"n_correctly_answered" db:"n_correctly_answered"`
+	QuestionIDsOrdered []int     `json:"question_ids_ordered" db:"question_ids_ordered"` // PostgreSQL integer array
+	Rank               *int      `json:"rank,omitempty" db:"rank"`
+	TotalMarks         float64   `json:"total_marks" db:"total_marks"`
+	ScoredMarks        float64   `json:"scored_marks" db:"scored_marks"`
+	StartedTime        time.Time `json:"started_time" db:"started_time"`
+	FinishedTime       time.Time `json:"finished_time" db:"finished_time"`
+	Mode               string    `json:"mode" db:"mode"`
+}
