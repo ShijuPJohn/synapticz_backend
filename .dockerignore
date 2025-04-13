@@ -1,0 +1,32 @@
+# Go-related
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Vendor (if not using vendored deps inside container)
+vendor/
+
+# Git
+.git
+.gitignore
+
+# IDE/editor stuff
+.idea/
+.vscode/
+*.swp
+
+# OS & temp files
+.DS_Store
+Thumbs.db
+
+# Secrets
+key.json
+.env
+*.pem
+*.crt
+*.key

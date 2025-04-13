@@ -19,6 +19,9 @@ func ddlStrings() []string {
     facebook VARCHAR(255),
     instagram VARCHAR(255),
     profile_pic VARCHAR(255),
+    is_premium BOOLEAN DEFAULT FALSE,
+    premium_since TIMESTAMP,
+    premium_expiry TIMESTAMP,
     about TEXT,
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -89,7 +92,6 @@ func ddlStrings() []string {
     current_question_num INT NOT NULL,
     n_correctly_answered INT DEFAULT 0,
     rank INT,
-    marks FLOAT[],
     total_marks float default 0,
     scored_marks float default 0,
     started_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -127,14 +129,34 @@ func ddlStrings() []string {
   questionsettags_id INT REFERENCES questionsettags(id) ON DELETE CASCADE,
   PRIMARY KEY (questionset_id, questionsettags_id)
 );`,
-		`CREATE TABLE IF NOT EXISTS   user_daily_activity (
+		`CREATE TABLE IF NOT EXISTS user_daily_activity (
   user_id INT REFERENCES users(id) ON DELETE CASCADE,
   activity_date DATE NOT NULL,
   questions_answered INT DEFAULT 0,
   tests_completed INT DEFAULT 0,
+  
+  questions_limit INT DEFAULT 20,
   PRIMARY KEY (user_id, activity_date)
 );
-`)
+`, `
+CREATE TABLE IF NOT EXISTS payments (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id),
+    amount NUMERIC(10,2) NOT NULL,
+    currency VARCHAR(10) DEFAULT 'INR',
+    payment_provider VARCHAR(50), -- e.g., "stripe", "razorpay"
+    payment_status VARCHAR(20), -- e.g., "success", "failed"
+    transaction_id TEXT,
+    paid_at TIMESTAMP DEFAULT now()
+);`, `
+CREATE TABLE IF NOT EXISTS subscription_plans (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50),
+    price NUMERIC(10,2),
+    duration_days INT,
+    question_limit_per_day INT,
+    created_at TIMESTAMP DEFAULT now()
+);`)
 	return sqlStrings
 }
 func CreateTableIfNotExists() error {

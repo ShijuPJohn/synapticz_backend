@@ -33,7 +33,7 @@ func getDBCredentialsandPopulateJWTSecret() (string, error) {
 		str, err := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s", dbHost, dbPort, dbUser, dbPass, dbName, sslMode), nil
 		return str, nil
 	} else {
-		name := "projects/1037996227658/secrets/synapticz2pg/versions/3"
+		name := "projects/1037996227658/secrets/synapticz2pg/versions/5"
 		ctx := context.Background()
 		client, err := secretmanager.NewClient(ctx)
 		if err != nil {
