@@ -1,15 +1,12 @@
-FROM golang:1.21-alpine AS builder
+FROM golang:1.21 as builder
 
-RUN mkdir -p /myapp
-WORKDIR /myapp
+WORKDIR /app
+
+# Only copy go.mod and go.sum first
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Now copy rest of the code
 COPY . .
-RUN CGO_ENABLED=0 go build -o main .
 
-###################
-# Package Stage
-###################
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates tzdata
-COPY --from=builder /myapp/main /usr/local/bin/main
-EXPOSE 5000
-CMD ["main"]
+RUN CGO_ENABLED=0 go build -o main .
