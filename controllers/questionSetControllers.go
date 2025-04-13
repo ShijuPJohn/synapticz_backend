@@ -21,7 +21,7 @@ type CreateQuestionSetInput struct {
 	TimeDuration       int        `json:"time_duration"`
 	Description        string     `json:"description"`
 	AssociatedResource string     `json:"associated_resource"`
-	QuestionIDs        []string   `json:"question_ids"`
+	QuestionIDs        []int      `json:"question_ids"`
 	Tags               []string   `json:"tags"`
 	Marks              *[]float64 `json:"marks"`
 }
@@ -76,25 +76,34 @@ func CreateQuestionSet(c *fiber.Ctx) error {
 	markSlice := []float64{}
 	if input.Marks != nil && len(*input.Marks) == len(input.QuestionIDs) {
 		markSlice = *input.Marks
+		insertQ := `
+		INSERT INTO question_set_questions (question_set_id, question_id, mark)
+		VALUES ($1, $2, $3)
+	`
+		for i, qid := range input.QuestionIDs {
+			_, err := tx.Exec(insertQ, questionSetID, qid, markSlice[i])
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to associate question: " + err.Error(),
+				})
+			}
+		}
 	} else {
-		for _, mark := range *input.Marks {
-			markSlice = append(markSlice, mark)
+		insertQ := `
+		INSERT INTO question_set_questions (question_set_id, question_id)
+		VALUES ($1, $2)
+	`
+		for _, qid := range input.QuestionIDs {
+			_, err := tx.Exec(insertQ, questionSetID, qid)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to associate question: " + err.Error(),
+				})
+			}
 		}
 	}
 
 	// Insert questions
-	insertQ := `
-		INSERT INTO question_set_questions (question_set_id, question_id, mark)
-		VALUES ($1, $2, $3)
-	`
-	for i, qid := range input.QuestionIDs {
-		_, err := tx.Exec(insertQ, questionSetID, qid, markSlice[i])
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Failed to associate question: " + err.Error(),
-			})
-		}
-	}
 
 	// Handle tags
 	getOrInsertTag := `
@@ -375,122 +384,3 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 		"tags":                tags,
 	})
 }
-
-//
-//func GetQuestionSets(c *fiber.Ctx) error {
-//	filterClauses := []string{"1=1"}
-//	params := []
-
-//	interface{}{}
-//	paramIndex := 1
-//
-//	if subject := c.Query("subject"); subject != "" {
-//		filterClauses = append(filterClauses, "subject = $"+strconv.Itoa(paramIndex))
-//		params = append(params, subject)
-//		paramIndex++
-//	}
-//	if category := c.Query("category"); category != "" {
-//		filterClauses = append(filterClauses, "category = $"+strconv.Itoa(paramIndex))
-//		params = append(params, category)
-//		paramIndex++
-//	}
-//	if language := c.Query("language"); language != "" {
-//		filterClauses = append(filterClauses, "language = $"+strconv.Itoa(paramIndex))
-//		params = append(params, language)
-//		paramIndex++
-//	}
-//
-//	filter := strings.Join(filterClauses, " AND ")
-//	query := "SELECT id, title, description, subject, category, tags, language, created_by_id FROM question_sets WHERE " + filter
-//
-//	count, _ := strconv.Atoi(c.Query("count", "0"))
-//	if count > 0 {
-//		query += " LIMIT " + strconv.Itoa(count)
-//	}
-//
-//	rows, err := util.DB.Query(query, params...)
-//	if err != nil {
-//		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-//	}
-//	defer rows.Close()
-//
-//	questionSets := []models.QuestionSet{}
-//	for rows.Next() {
-//		var q models.QuestionSet
-//		var tagStr string
-//		if err := rows.Scan(&q.ID, &q.Title, &q.Description, &q.Subject, &q.Category, &tagStr, &q.Language, &q.CreatedByID); err != nil {
-//			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-//		}
-//		q.Tags = strings.Split(tagStr, ",")
-//		questionSets = append(questionSets, q)
-//	}
-//
-//	return c.JSON(fiber.Map{"question_sets": questionSets})
-//}
-//
-//func GetQuestionSetByID(c *fiber.Ctx) error {
-//	id := c.Params("id")
-//	query := `SELECT id, title, description, subject, category, tags, language, created_by_id FROM question_sets WHERE id = $1`
-//	var q models.QuestionSet
-//	var tagStr string
-//	err := util.DB.QueryRow(query, id).Scan(&q.ID, &q.Title, &q.Description, &q.Subject, &q.Category, &tagStr, &q.Language, &q.CreatedByID)
-//	if err != nil {
-//		return c.Status(404).JSON(fiber.Map{"error": "Question set not found"})
-//	}
-//
-//	q.Tags = strings.Split(tagStr, ",")
-//	return c.JSON(fiber.Map{"question_set": q})
-//}
-//
-//func EditQuestionSet(c *fiber.Ctx) error {
-//	id := c.Params("id")
-//	userID := c.Locals("user_id").(int)
-//	userRole := c.Locals("user_role").(string)
-//
-//	// Only the creator or admin/owner can edit
-//	var creatorID int
-//	err := util.DB.QueryRow("SELECT created_by_id FROM question_sets WHERE id = $1", id).Scan(&creatorID)
-//	if err != nil {
-//		return c.Status(404).JSON(fiber.Map{"error": "Question set not found"})
-//	}
-//	if creatorID != userID && userRole != "admin" && userRole != "owner" {
-//		return c.Status(403).JSON(fiber.Map{"error": "Unauthorized"})
-//	}
-//
-//	var q models.QuestionSet
-//	if err := c.BodyParser(&q); err != nil {
-//		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
-//	}
-//
-//	tagStr := strings.Join(q.Tags, ",")
-//	query := `UPDATE question_sets SET title = $1, description = $2, subject = $3, category = $4, tags = $5, language = $6 WHERE id = $7`
-//	_, err = util.DB.Exec(query, q.Title, q.Description, q.Subject, q.Category, tagStr, q.Language, id)
-//	if err != nil {
-//		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-//	}
-//
-//	return c.JSON(fiber.Map{"status": "updated"})
-//}
-//
-//func DeleteQuestionSet(c *fiber.Ctx) error {
-//	id := c.Params("id")
-//	userID := c.Locals("user_id").(int)
-//	userRole := c.Locals("user_role").(string)
-//
-//	// Only the creator or admin/owner can delete
-//	var creatorID int
-//	err := util.DB.QueryRow("SELECT created_by_id FROM question_sets WHERE id = $1", id).Scan(&creatorID)
-//	if err != nil {
-//		return c.Status(404).JSON(fiber.Map{"error": "Question set not found"})
-//	}
-//	if creatorID != userID && userRole != "admin" && userRole != "owner" {
-//		return c.Status(403).JSON(fiber.Map{"error": "Unauthorized"})
-//	}
-//
-//	_, err = util.DB.Exec("DELETE FROM question_sets WHERE id = $1", id)
-//	if err != nil {
-//		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-//	}
-//
-//	return c.JSON(fiber.Map{"status": "deleted"})
-//}

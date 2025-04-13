@@ -95,7 +95,7 @@ func CreateTestSession(c *fiber.Ctx) error {
 	}
 	defer stmtAnswers.Close()
 
-	for _, qid := range questionIDs {
+	for i, qid := range questionIDs {
 
 		// Fetch correct_options from the questions table
 		var correctOptions64 pq.Int64Array
@@ -118,7 +118,7 @@ func CreateTestSession(c *fiber.Ctx) error {
 			qid,
 			pq.Array(correctOptions),
 			pq.Array([]int{}), // selected_answer_list empty
-			1.0,               // total mark per question
+			marks[i],          // total mark per question
 			0.0,               // scored mark initially 0
 			false,             // not answered yet
 		)
@@ -181,8 +181,6 @@ func GetTestSession(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch test session"})
 	}
-	fmt.Println(session.ScoredMarks)
-	fmt.Println(session.TotalMarks)
 	// Fetch full question + answer data
 	rows, err := util.DB.Query(`
 		SELECT 
@@ -270,7 +268,6 @@ func UpdateTestSession(c *fiber.Ctx) error {
 	type answerDTO struct {
 		QuestionAnswerData   map[string]interface{} `json:"question_answer_data"`
 		CurrentQuestionIndex int                    `json:"current_question_index"`
-		TotalMarksScored     float64                `json:"total_marks_scored"`
 	}
 
 	testSessionID := c.Params("test_session_id")
@@ -289,7 +286,6 @@ func UpdateTestSession(c *fiber.Ctx) error {
 
 	user := c.Locals("user").(models.User)
 
-	// Validate ownership
 	var takenByID int
 	var finished bool
 	err := util.DB.QueryRow(`SELECT taken_by_id, finished FROM test_sessions WHERE id = $1`, testSessionID).Scan(&takenByID, &finished)
@@ -306,12 +302,13 @@ func UpdateTestSession(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "finished", "message": "Test session already finished"})
 	}
 
-	// Begin updating question-level data
 	tx, err := util.DB.Begin()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Transaction begin failed"})
 	}
 	defer tx.Rollback()
+
+	var totalScored float64
 
 	for qidStr, val := range dto.QuestionAnswerData {
 		qid, err := strconv.Atoi(qidStr)
@@ -331,9 +328,46 @@ func UpdateTestSession(c *fiber.Ctx) error {
 			correctList[i] = int64(v.(float64))
 		}
 
-		//totalMark := answer["questions_total_mark"].(float64)
-		scoredMark := answer["questions_scored_mark"].(float64)
+		totalMark := answer["questions_total_mark"].(float64)
 		answered := answer["answered"].(bool)
+
+		// Get question type
+		var qType string
+		err = tx.QueryRow(`SELECT question_type FROM questions WHERE id = $1`, qid).Scan(&qType)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": fmt.Sprintf("Failed to get question type for question %d: %v", qid, err),
+			})
+		}
+
+		// Scoring logic
+		var scored float64 = 0
+
+		if qType == "m-choice" {
+			if len(selectedList) == 1 && len(correctList) == 1 && selectedList[0] == correctList[0] {
+				scored = totalMark
+			}
+		} else if qType == "m-select" {
+			if len(selectedList) > 0 {
+				hasWrong := false
+				correctMap := make(map[int64]bool)
+				for _, c := range correctList {
+					correctMap[c] = true
+				}
+				for _, selected := range selectedList {
+					if !correctMap[selected] {
+						hasWrong = true
+						break
+					}
+				}
+				if !hasWrong {
+					fraction := float64(len(selectedList)) / float64(len(correctList))
+					scored = totalMark * fraction
+				}
+			}
+		}
+
+		totalScored += scored
 
 		_, err = tx.Exec(`
 			UPDATE test_session_question_answers
@@ -341,7 +375,7 @@ func UpdateTestSession(c *fiber.Ctx) error {
 			    questions_scored_mark = $2,
 			    answered = $3
 			WHERE test_session_id = $4 AND question_id = $5
-		`, pq.Array(selectedList), scoredMark, answered, testSessionID, qid)
+		`, pq.Array(selectedList), scored, answered, testSessionID, qid)
 
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -350,12 +384,12 @@ func UpdateTestSession(c *fiber.Ctx) error {
 		}
 	}
 
-	// Update test session current index and score
+	// Update test session progress
 	_, err = tx.Exec(`
 		UPDATE test_sessions
 		SET current_question_num = $1, scored_marks = $2
 		WHERE id = $3
-	`, dto.CurrentQuestionIndex, dto.TotalMarksScored, testSessionID)
+	`, dto.CurrentQuestionIndex, totalScored, testSessionID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update test session"})
 	}
@@ -363,10 +397,84 @@ func UpdateTestSession(c *fiber.Ctx) error {
 	if err := tx.Commit(); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Transaction commit failed"})
 	}
-
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"status":               "success",
 		"current_question_num": dto.CurrentQuestionIndex,
-		"scored_marks":         dto.TotalMarksScored,
+		"scored_marks":         totalScored,
+	})
+}
+func FinishTestSession(c *fiber.Ctx) error {
+	testSessionID := c.Params("test_session_id")
+	if testSessionID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Test session ID is required",
+		})
+	}
+
+	user := c.Locals("user").(models.User)
+
+	var takenByID int
+	var finished bool
+	var startedTime time.Time
+	err := util.DB.QueryRow(`
+		SELECT taken_by_id, finished, started_time 
+		FROM test_sessions 
+		WHERE id = $1
+	`, testSessionID).Scan(&takenByID, &finished, &startedTime)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Test session not found"})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch test session"})
+	}
+
+	if takenByID != user.ID {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+	if finished {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Test session is already finished"})
+	}
+
+	// Aggregate marks
+	var totalMarks, scoredMarks float64
+	err = util.DB.QueryRow(`
+		SELECT 
+			COALESCE(SUM(questions_total_mark), 0), 
+			COALESCE(SUM(questions_scored_mark), 0)
+		FROM test_session_question_answers
+		WHERE test_session_id = $1
+	`, testSessionID).Scan(&totalMarks, &scoredMarks)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to calculate marks"})
+	}
+
+	finishedTime := time.Now()
+	currentQuestionNum := 0
+
+	// Update session
+	_, err = util.DB.Exec(`
+	UPDATE test_sessions
+	SET finished = true,
+	    finished_time = $1,
+	    total_marks = $2,
+	    scored_marks = $3,
+	    current_question_num = $4
+	WHERE id = $5
+`, finishedTime, totalMarks, scoredMarks, currentQuestionNum, testSessionID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to finish test session: " + err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":          "success",
+		"started_time":    startedTime,
+		"finished_time":   finishedTime,
+		"total_marks":     totalMarks,
+		"scored_marks":    scoredMarks,
+		"test_session_id": testSessionID,
+		"finished_status": true,
 	})
 }

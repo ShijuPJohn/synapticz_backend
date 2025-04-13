@@ -39,7 +39,7 @@ func SetupRoutes(app *fiber.App) {
 	testSession := api.Group("/test_session")
 	testSession.Post("/", middlewares.Protected(), controllers.CreateTestSession)
 	//testSession.Get("/", middlewares.Protected(), controllers.GetTestSessionByUserID)
-	//testSession.Put("/finish/:test_session_id", middlewares.Protected(), controllers.FinishTestSession)
+	testSession.Put("/finish/:test_session_id", middlewares.Protected(), controllers.FinishTestSession)
 	testSession.Put("/:test_session_id", middlewares.Protected(), controllers.UpdateTestSession)
 	testSession.Get("/:test_session_id", middlewares.Protected(), controllers.GetTestSession)
 }
