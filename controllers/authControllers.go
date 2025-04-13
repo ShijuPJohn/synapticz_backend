@@ -16,22 +16,6 @@ func Index(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "page": "index page"})
 }
 
-//	func GetAllUsers(c *fiber.Ctx) error {
-//		var users []models.User
-//
-//		if err := utils.DB.Db.Find(&users).Error; err != nil {
-//			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-//				"status":  "error",
-//				"message": "Error fetching users from the database",
-//				"error":   err.Error(),
-//			})
-//		}
-//		return c.Status(fiber.StatusOK).JSON(fiber.Map{
-//			"status": "success",
-//			"users":  users,
-//		})
-//	}
-
 func CreateUser(c *fiber.Ctx) error {
 	fmt.Println("hereeee")
 	u := new(models.User)
