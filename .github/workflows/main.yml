@@ -42,5 +42,5 @@ jobs:
             --region asia-southeast1 \
             --platform managed \
             --project ${{ secrets.GCLOUD_PROJECT }} \
-            --ga-deploy@eastern-academy-375008.iam.gserviceaccount.com \
+            --service-account ${{ secrets.GCLOUD_EMAIL }} \
             --quiet
