@@ -39,7 +39,7 @@ jobs:
         run: |
           gcloud beta run deploy ${{ secrets.GCLOUD_APP_NAME }} \
             --image ${{ secrets.GCLOUD_ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCLOUD_PROJECT }}/${{ secrets.GCLOUD_REPO }}/${{ secrets.GCLOUD_APP_NAME }} \
-            --region us-central1 \
+            --region asia-southeast1 \
             --platform managed \
             --project ${{ secrets.GCLOUD_PROJECT }} \
             --quiet
