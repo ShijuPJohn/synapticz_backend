@@ -19,10 +19,10 @@ func main() {
 	} else {
 		log.Println("Connected to the database")
 	}
-	if err = util.CreateTableIfNotExists(); err != nil {
-		log.Fatal("Couldn't create tables", err)
-	}
-	log.Println("Tables Created")
+	//if err = util.CreateTableIfNotExists(); err != nil {
+	//	log.Fatal("Couldn't create tables", err)
+	//}
+	//log.Println("Tables Created")
 	app := fiber.New()
 	app.Use(cors.New())
 	app.Use(logger.New())

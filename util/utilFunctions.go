@@ -49,6 +49,7 @@ func getDBCredentialsandPopulateJWTSecret() (string, error) {
 		}
 		stringVal := string(result.Payload.Data)
 		words := strings.Fields(stringVal)
+		fmt.Println(words)
 		JWTSecret = words[0]
 		return strings.Join(words[1:], " "), nil
 	}
