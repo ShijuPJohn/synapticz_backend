@@ -16,7 +16,7 @@ func Index(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "page": "index page"})
 }
 
-// creating a new user
+// creating a user
 func CreateUser(c *fiber.Ctx) error {
 	fmt.Println("hereeee")
 	u := new(models.User)
