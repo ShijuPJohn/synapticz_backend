@@ -174,7 +174,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		SELECT DISTINCT 
 			qs.id, qs.name, qs.mode, qs.subject, qs.exam, qs.language,
 			qs.time_duration, qs.description, qs.associated_resource,
-			qs.created_by_id, u.name as created_by_name, qs.created_at,
+			qs.created_by_id,  u.name, qs.cover_image as created_by_name, qs.created_at,
 			COUNT(qq.question_id) AS total_questions
 		FROM question_sets qs
 		JOIN users u ON qs.created_by_id = u.id
@@ -251,6 +251,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		CreatedByName      string    `json:"created_by_name"`
 		CreatedAt          time.Time `json:"created_at"`
 		TotalQuestions     int       `json:"total_questions"`
+		CoverImage         string    `json:"coverImage"`
 	}
 
 	var results []QuestionSetResponse
@@ -269,6 +270,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 			&qs.AssociatedResource,
 			&qs.CreatedByID,
 			&qs.CreatedByName,
+			&qs.CoverImage,
 			&qs.CreatedAt,
 			&qs.TotalQuestions,
 		)

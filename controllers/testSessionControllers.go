@@ -6,7 +6,9 @@ import (
 	"github.com/ShijuPJohn/synapticz_backend/models"
 	"github.com/ShijuPJohn/synapticz_backend/util"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"log"
 	"math/rand"
 	"strconv"
 	"time"
@@ -476,5 +478,100 @@ func FinishTestSession(c *fiber.Ctx) error {
 		"scored_marks":    scoredMarks,
 		"test_session_id": testSessionID,
 		"finished_status": true,
+	})
+}
+func GetTestHistory(c *fiber.Ctx) error {
+	db := util.DB // *sql.DB connection
+
+	userID := c.Locals("user").(models.User).ID // assuming set as int
+
+	// Pagination
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "10"))
+	offset := (page - 1) * limit
+
+	// Filters
+	subject := c.Query("subject", "")
+	exam := c.Query("exam", "")
+	date := c.Query("date", "") // format: YYYY-MM-DD
+
+	// Base query
+	query := `
+	SELECT ts.id,ts.name,ts.finished, ts.started, ts.started_time, ts.finished_time,
+	       ts.mode,ts.total_marks, ts.scored_marks, qs.subject, qs.exam, qs.language, qs.cover_image,ts.updated_time
+	FROM test_sessions ts join question_sets qs on ts.question_set_id = qs.id 
+	WHERE ts.taken_by_id = $1
+	`
+	args := []interface{}{userID}
+	argIdx := 2
+
+	// Add filters dynamically
+	if subject != "" {
+		query += fmt.Sprintf(" AND qs.subject ILIKE $%d", argIdx)
+		args = append(args, "%"+subject+"%")
+		argIdx++
+	}
+
+	if exam != "" {
+		query += fmt.Sprintf(" AND qs.exam ILIKE $%d", argIdx)
+		args = append(args, "%"+exam+"%")
+		argIdx++
+	}
+
+	if date != "" {
+		query += fmt.Sprintf(" AND DATE(ts.started_time) = $%d", argIdx)
+		args = append(args, date)
+		argIdx++
+	}
+
+	// Add pagination
+	query += fmt.Sprintf(" ORDER BY ts.started_time DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	args = append(args, limit, offset)
+
+	// Execute query
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		log.Println("Query error:", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch test history"})
+	}
+	defer rows.Close()
+
+	// Result structure
+	type TestHistory struct {
+		ID           uuid.UUID `json:"id"`
+		Name         string    `json:"qSetName"`
+		Finished     bool      `json:"finished"`
+		Started      bool      `json:"started"`
+		StartedTime  time.Time `json:"startedTime"`
+		FinishedTime time.Time `json:"finishedTime"`
+		Mode         string    `json:"mode"`
+		TotalMarks   float64   `json:"totalMarks"`
+		ScoredMarks  float64   `json:"scoredMarks"`
+		Subject      string    `json:"subject"`
+		Exam         string    `json:"exam"`
+		Language     string    `json:"language"`
+		CoverImage   string    `json:"coverImage"`
+		UpdatedTime  time.Time `json:"updatedTime"`
+	}
+
+	history := []TestHistory{}
+	for rows.Next() {
+		var h TestHistory
+		if err := rows.Scan(
+			&h.ID, &h.Name, &h.Finished, &h.Started, &h.StartedTime, &h.FinishedTime, &h.Mode,
+			&h.TotalMarks, &h.ScoredMarks, &h.Subject, &h.Exam, &h.Language, &h.CoverImage, &h.UpdatedTime,
+		); err != nil {
+			log.Println("Row scan error:", err)
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to scan test history"})
+		}
+		history = append(history, h)
+	}
+
+	return c.JSON(fiber.Map{
+		"page":    page,
+		"limit":   limit,
+		"history": history,
+		"count":   len(history),
+		"hasMore": len(history) == limit,
 	})
 }
