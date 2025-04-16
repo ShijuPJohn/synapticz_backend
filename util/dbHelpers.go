@@ -64,6 +64,7 @@ func ddlStrings() []string {
     created_by_id INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    cover_image VARCHAR(512),
     FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE CASCADE
 )`,
 		`CREATE TABLE IF NOT EXISTS  user_questionsets_editors (
@@ -94,8 +95,9 @@ func ddlStrings() []string {
     rank INT,
     total_marks float default 0,
     scored_marks float default 0,
+    updated_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     started_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    finished_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    finished_time TIMESTAMP,
     mode VARCHAR(50) NOT NULL CHECK (mode IN ('practice', 'exam', 'timed-practice')),
     FOREIGN KEY (question_set_id) REFERENCES question_sets(id) ON DELETE CASCADE,
     FOREIGN KEY (taken_by_id) REFERENCES users(id) ON DELETE CASCADE
@@ -156,7 +158,28 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     duration_days INT,
     question_limit_per_day INT,
     created_at TIMESTAMP DEFAULT now()
-);`)
+);`, `
+CREATE TABLE IF NOT EXISTS bookmarked_questions (
+    user_id INT NOT NULL,
+    question_id INT NOT NULL,
+    bookmarked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, question_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+);
+`, `
+CREATE TABLE IF NOT EXISTS saved_explanations (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    question_id INT NOT NULL,
+    explanation TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, question_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+);
+`)
 	return sqlStrings
 }
 func CreateTableIfNotExists() error {
