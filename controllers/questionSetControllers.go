@@ -289,24 +289,27 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	var qs struct {
-		ID                 int       `json:"id"`
-		Name               string    `json:"name"`
-		Mode               string    `json:"mode"`
-		Subject            string    `json:"subject"`
-		Exam               string    `json:"exam"`
-		Language           string    `json:"language"`
-		TimeDuration       int       `json:"time_duration"`
-		Description        string    `json:"description"`
-		AssociatedResource string    `json:"associated_resource"`
-		CreatedAt          time.Time `json:"created_at"`
-		CreatedByName      string    `json:"created_by_name"`
+		ID                   int       `json:"id"`
+		Name                 string    `json:"name"`
+		Mode                 string    `json:"mode"`
+		Subject              string    `json:"subject"`
+		Exam                 string    `json:"exam"`
+		Language             string    `json:"language"`
+		TimeDuration         int       `json:"time_duration"`
+		Description          string    `json:"description"`
+		AssociatedResource   string    `json:"associated_resource"`
+		CoverImage           *string   `json:"cover_image"`
+		CreatedAt            time.Time `json:"created_at"`
+		CreatedByName        string    `json:"created_by_name"`
+		TestSessionsTakenCnt int       `json:"test_sessions_taken_count"`
 	}
 
 	query := `
 		SELECT 
 			qs.id, qs.name, qs.mode, qs.subject, qs.exam, qs.language,
 			qs.time_duration, qs.description, qs.associated_resource,
-			qs.created_at, u.name as created_by_name
+			qs.cover_image, qs.created_at, u.name AS created_by_name,
+			(SELECT COUNT(*) FROM test_sessions ts WHERE ts.question_set_id = qs.id) AS test_sessions_taken_count
 		FROM question_sets qs
 		JOIN users u ON qs.created_by_id = u.id
 		WHERE qs.id = $1
@@ -315,7 +318,7 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 	err := util.DB.QueryRow(query, id).Scan(
 		&qs.ID, &qs.Name, &qs.Mode, &qs.Subject, &qs.Exam, &qs.Language,
 		&qs.TimeDuration, &qs.Description, &qs.AssociatedResource,
-		&qs.CreatedAt, &qs.CreatedByName,
+		&qs.CoverImage, &qs.CreatedAt, &qs.CreatedByName, &qs.TestSessionsTakenCnt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -326,26 +329,6 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to retrieve question set: " + err.Error(),
 		})
-	}
-
-	// Get question IDs
-	questionRows, err := util.DB.Query(`
-		SELECT question_id FROM question_set_questions
-		WHERE question_set_id = $1
-	`, id)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to retrieve questions: " + err.Error(),
-		})
-	}
-	defer questionRows.Close()
-
-	var questionIDs []int
-	for questionRows.Next() {
-		var qid int
-		if err := questionRows.Scan(&qid); err == nil {
-			questionIDs = append(questionIDs, qid)
-		}
 	}
 
 	// Get tags
@@ -380,9 +363,11 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 		"time_duration":       qs.TimeDuration,
 		"description":         qs.Description,
 		"associated_resource": qs.AssociatedResource,
+		"cover_image":         qs.CoverImage,
 		"created_at":          qs.CreatedAt,
 		"created_by_name":     qs.CreatedByName,
-		"question_ids":        questionIDs,
 		"tags":                tags,
+		"test_sessions_taken": qs.TestSessionsTakenCnt,
+		"can_start_test":      true,
 	})
 }
