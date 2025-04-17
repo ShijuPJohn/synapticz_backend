@@ -18,7 +18,6 @@ func Index(c *fiber.Ctx) error {
 
 // creating a new user
 func CreateUser(c *fiber.Ctx) error {
-	fmt.Println("hereeee")
 	u := new(models.User)
 	if err := c.BodyParser(u); err != nil {
 		return c.Status(400).SendString(err.Error())
@@ -34,16 +33,17 @@ func CreateUser(c *fiber.Ctx) error {
 			"message": err.Error(),
 		})
 	}
-
+	fmt.Println("here1")
 	hash, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
 	if err != nil {
+		fmt.Println("here2", err.Error())
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": err.Error(),
 		})
 	}
 	u.Password = string(hash)
-
+	fmt.Println("here3")
 	query := `INSERT INTO users 
 	(name, email, password, role, linkedin, facebook, instagram, profile_pic, about)
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -61,7 +61,7 @@ func CreateUser(c *fiber.Ctx) error {
 		u.ProfilePic,
 		u.About,
 	).Scan(&u.ID)
-
+	fmt.Println("here4")
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
@@ -69,10 +69,10 @@ func CreateUser(c *fiber.Ctx) error {
 			"error":   err.Error(),
 		})
 	}
-
+	fmt.Println("here5")
 	token, err := util.JwtGenerate(*u, strconv.Itoa(int(u.ID)))
 	if err != nil {
-		fmt.Println(err.Error())
+		fmt.Println("Error Here.....", err.Error())
 		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 	}
 
