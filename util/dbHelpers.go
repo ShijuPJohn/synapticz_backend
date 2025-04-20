@@ -134,7 +134,6 @@ func ddlStrings() []string {
 		`CREATE TABLE IF NOT EXISTS user_daily_activity (
   user_id INT REFERENCES users(id) ON DELETE CASCADE,
   activity_date DATE NOT NULL,
-  questions_answered INT DEFAULT 0,
   tests_completed INT DEFAULT 0,
   
   questions_limit INT DEFAULT 20,
@@ -179,6 +178,30 @@ CREATE TABLE IF NOT EXISTS saved_explanations (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
 );
+`, `
+CREATE TABLE IF NOT EXISTS question_error_reports (
+    id SERIAL PRIMARY KEY,
+    question_id INT NOT NULL,
+    reported_by_id INT NOT NULL,
+    reported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    report_type VARCHAR(50) NOT NULL CHECK (report_type IN ('question', 'option', 'explanation')),
+    option_index INT,
+    report_text TEXT NOT NULL,
+    status VARCHAR(50) DEFAULT 'open' CHECK (status IN ('open', 'reviewed', 'resolved', 'rejected')),
+    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
+    FOREIGN KEY (reported_by_id) REFERENCES users(id) ON DELETE CASCADE
+);
+`, `
+CREATE TABLE IF NOT EXISTS user_daily_questions (
+    user_id INT NOT NULL,
+    question_id INT NOT NULL,
+    activity_date DATE DEFAULT CURRENT_DATE,
+    answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, question_id, activity_date),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+);
+
 `)
 	return sqlStrings
 }

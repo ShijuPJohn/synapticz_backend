@@ -18,6 +18,7 @@ type User struct {
 	Deleted           bool      `json:"deleted" db:"deleted"`
 	CreatedAt         time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
+	IsPremium         bool      `json:"isPremium"`
 }
 
 type Question struct {
