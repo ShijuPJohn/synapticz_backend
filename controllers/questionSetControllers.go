@@ -162,6 +162,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 	exam := c.Query("exam")
 	language := c.Query("language")
 	tags := c.Query("tags")
+	search := c.Query("search")
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "10"))
 
@@ -174,7 +175,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		SELECT DISTINCT 
 			qs.id, qs.name, qs.mode, qs.subject, qs.exam, qs.language,
 			qs.time_duration, qs.description, qs.associated_resource,
-			qs.created_by_id,  u.name, qs.cover_image as created_by_name, qs.created_at,
+			qs.created_by_id, u.name, qs.cover_image, qs.created_at,
 			COUNT(qq.question_id) AS total_questions
 		FROM question_sets qs
 		JOIN users u ON qs.created_by_id = u.id
@@ -219,12 +220,29 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		args = append(args, pq.Array(tagList))
 		argID++
 	}
+	if search != "" {
+		searchTerm := "%" + search + "%"
+		query += fmt.Sprintf(`
+			AND (
+				LOWER(qs.name) ILIKE $%d OR
+				LOWER(qs.subject) ILIKE $%d OR
+				LOWER(qs.description) ILIKE $%d OR
+				EXISTS (
+					SELECT 1 FROM questionsets_questionsettags qst2
+					JOIN questionsettags t2 ON qst2.questionsettags_id = t2.id
+					WHERE qst2.questionset_id = qs.id AND LOWER(t2.name) ILIKE $%d
+				)
+			)
+		`, argID, argID, argID, argID)
+		args = append(args, strings.ToLower(searchTerm))
+		argID++
+	}
 
 	query += `
 		GROUP BY 
 			qs.id, qs.name, qs.mode, qs.subject, qs.exam, qs.language,
 			qs.time_duration, qs.description, qs.associated_resource,
-			qs.created_by_id, u.name, qs.created_at
+			qs.created_by_id, u.name, qs.cover_image, qs.created_at
 	`
 	query += fmt.Sprintf(" ORDER BY qs.created_at DESC LIMIT $%d OFFSET $%d", argID, argID+1)
 	args = append(args, limit, offset)
@@ -249,9 +267,9 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		AssociatedResource string    `json:"associated_resource"`
 		CreatedByID        string    `json:"created_by_id"`
 		CreatedByName      string    `json:"created_by_name"`
+		CoverImage         string    `json:"coverImage"`
 		CreatedAt          time.Time `json:"created_at"`
 		TotalQuestions     int       `json:"total_questions"`
-		CoverImage         string    `json:"coverImage"`
 	}
 
 	var results []QuestionSetResponse

@@ -394,7 +394,11 @@ func UpdateTestSession(c *fiber.Ctx) error {
 
 	var takenByID int
 	var finished bool
-	err := util.DB.QueryRow(`SELECT taken_by_id, finished FROM test_sessions WHERE id = $1`, testSessionID).Scan(&takenByID, &finished)
+	var questionSetID int
+	err := util.DB.QueryRow(
+		`SELECT taken_by_id, finished, question_set_id 
+         FROM test_sessions 
+         WHERE id = $1`, testSessionID).Scan(&takenByID, &finished, &questionSetID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Test session not found"})
@@ -414,8 +418,58 @@ func UpdateTestSession(c *fiber.Ctx) error {
 	}
 	defer tx.Rollback()
 
+	// Check daily question limit for non-premium users
+	if !user.IsPremium {
+		today := time.Now().UTC().Format("2006-01-02")
+		var answeredToday int
+		err := tx.QueryRow(
+			`SELECT COUNT(*) 
+	 FROM user_daily_questions 
+	 WHERE user_id = $1 AND activity_date = $2`, user.ID, today).Scan(&answeredToday)
+
+		if err != nil && err != sql.ErrNoRows {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to check daily activity " + err.Error(),
+			})
+		}
+
+		var questionLimit int
+		err = tx.QueryRow(
+			`SELECT questions_limit 
+             FROM user_daily_activity 
+             WHERE user_id = $1 AND activity_date = $2`, user.ID, today).Scan(&questionLimit)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				// Default limit if no record exists
+				questionLimit = 20
+			} else {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to get question limit",
+				})
+			}
+		}
+
+		newAnswers := 0
+		for _, val := range dto.QuestionAnswerData {
+			answer, ok := val.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if answered, ok := answer["answered"].(bool); ok && answered {
+				newAnswers++
+			}
+		}
+
+		if answeredToday+newAnswers > questionLimit {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": fmt.Sprintf("Daily question limit reached (%d/%d)", answeredToday, questionLimit),
+			})
+		}
+	}
+
 	var totalScored float64
 	var totalMarks float64
+	var newlyAnsweredQuestions []int
 
 	for qidStr, val := range dto.QuestionAnswerData {
 		qid, err := strconv.Atoi(qidStr)
@@ -452,6 +506,23 @@ func UpdateTestSession(c *fiber.Ctx) error {
 		answered := answer["answered"].(bool)
 
 		totalMarks += totalMark // accumulate total marks
+
+		// Check if this question was newly answered
+		var previouslyAnswered bool
+		err = tx.QueryRow(
+			`SELECT answered 
+             FROM test_session_question_answers 
+             WHERE test_session_id = $1 AND question_id = $2`,
+			testSessionID, qid).Scan(&previouslyAnswered)
+		if err != nil && err != sql.ErrNoRows {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": fmt.Sprintf("Failed to check previous answer status for question %d", qid),
+			})
+		}
+
+		if answered && !previouslyAnswered {
+			newlyAnsweredQuestions = append(newlyAnsweredQuestions, qid)
+		}
 
 		// Get question type
 		var qType string
@@ -510,11 +581,49 @@ func UpdateTestSession(c *fiber.Ctx) error {
 		UPDATE test_sessions
 		SET current_question_num = $1,
 		    scored_marks = $2,
-		    total_marks = $3
+		    total_marks = $3,
+		    updated_time = CURRENT_TIMESTAMP
 		WHERE id = $4
 	`, dto.CurrentQuestionIndex, totalScored, totalMarks, testSessionID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update test session"})
+	}
+
+	// Log daily activity for newly answered questions
+	if len(newlyAnsweredQuestions) > 0 {
+		today := time.Now().UTC().Format("2006-01-02")
+
+		// Upsert daily activity
+		//_, err = tx.Exec(`
+		//	INSERT INTO user_daily_activity (user_id, activity_date, questions_answered)
+		//	VALUES ($1, $2, $3)
+		//	ON CONFLICT (user_id, activity_date)
+		//	DO UPDATE SET
+		//		questions_answered = user_daily_activity.questions_answered + EXCLUDED.questions_answered,
+		//		questions_limit = CASE
+		//			WHEN user_daily_activity.questions_limit = 0 THEN EXCLUDED.questions_limit
+		//			ELSE user_daily_activity.questions_limit
+		//		END
+		//`, user.ID, today, len(newlyAnsweredQuestions))
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to update daily activity",
+			})
+		}
+
+		// Record individual questions answered today
+		for _, qid := range newlyAnsweredQuestions {
+			_, err = tx.Exec(`
+				INSERT INTO user_daily_questions (user_id, question_id, activity_date)
+				VALUES ($1, $2, $3)
+				ON CONFLICT (user_id, question_id, activity_date) DO NOTHING
+			`, user.ID, qid, today)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to record answered question",
+				})
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -618,7 +727,22 @@ func FinishTestSession(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch question set details"})
 	}
 
-	// Get historical stats for this question set
+	// First mark the test session as finished
+	finishedTime := time.Now().UTC()
+	_, err = tx.Exec(
+		`UPDATE test_sessions
+         SET finished = true,
+             finished_time = $1,
+             total_marks = $2,
+             scored_marks = $3,
+             current_question_num = 0
+         WHERE id = $4`,
+		finishedTime, testResult.TotalMarks, testResult.ScoredMarks, testSessionID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to finish test session"})
+	}
+
+	// Now get historical stats (including this test session)
 	var stats struct {
 		Attempts int
 		AvgScore float64
@@ -631,7 +755,7 @@ func FinishTestSession(c *fiber.Ctx) error {
             COUNT(*) as attempts,
             COALESCE(AVG(scored_marks), 0) as avg_score,
             (SELECT COUNT(*) FROM test_sessions 
-             WHERE question_set_id = $1 AND scored_marks > $2) + 1 as user_rank,
+             WHERE question_set_id = $1 AND finished = true AND scored_marks > $2) + 1 as user_rank,
             COALESCE(MAX(scored_marks), 0) as top_score
          FROM test_sessions 
          WHERE question_set_id = $1 AND finished = true`, questionSetID, testResult.ScoredMarks).Scan(
@@ -640,19 +764,14 @@ func FinishTestSession(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch historical stats"})
 	}
 
-	finishedTime := time.Now().UTC()
+	// Update the rank now that we've calculated it
 	_, err = tx.Exec(
 		`UPDATE test_sessions
-         SET finished = true,
-             finished_time = $1,
-             total_marks = $2,
-             scored_marks = $3,
-             current_question_num = 0,
-             rank = $4
-         WHERE id = $5`,
-		finishedTime, testResult.TotalMarks, testResult.ScoredMarks, stats.UserRank, testSessionID)
+         SET rank = $1
+         WHERE id = $2`,
+		stats.UserRank, testSessionID)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to finish test session"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update test session rank"})
 	}
 
 	// Get all questions with answers for response
@@ -706,6 +825,8 @@ func FinishTestSession(c *fiber.Ctx) error {
 			"is_correct":            scoredMark > 0,
 		})
 	}
+
+	// Get all scores for percentile calculation
 	var allScores []float64
 	rows, err = tx.Query(
 		`SELECT scored_marks FROM test_sessions 
@@ -773,7 +894,6 @@ func FinishTestSession(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(response)
 }
-
 func GetTestHistory(c *fiber.Ctx) error {
 	db := util.DB // *sql.DB connection
 
