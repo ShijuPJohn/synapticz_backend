@@ -16,6 +16,7 @@ import (
 
 var DB *sql.DB
 var JWTSecret string
+var MailAPIKey string
 
 func getDBCredentialsandPopulateJWTSecret() (string, error) {
 	if env := os.Getenv("ENV"); env == "DEV" {
@@ -30,10 +31,11 @@ func getDBCredentialsandPopulateJWTSecret() (string, error) {
 		dbName := os.Getenv("DB_NAME")
 		sslMode := os.Getenv("SSL_MODE")
 		JWTSecret = os.Getenv("JWT_SECRET")
+		MailAPIKey = os.Getenv("MAIL_API_KEY")
 		str, err := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s", dbHost, dbPort, dbUser, dbPass, dbName, sslMode), nil
 		return str, nil
 	} else {
-		name := "projects/1037996227658/secrets/synapticz2pg/versions/5"
+		name := "projects/1037996227658/secrets/synapticz2pg/versions/6"
 		ctx := context.Background()
 		client, err := secretmanager.NewClient(ctx)
 		if err != nil {
@@ -49,8 +51,9 @@ func getDBCredentialsandPopulateJWTSecret() (string, error) {
 		}
 		stringVal := string(result.Payload.Data)
 		words := strings.Fields(stringVal)
-		JWTSecret = words[0]
-		return strings.Join(words[1:], " "), nil
+		MailAPIKey = words[0]
+		JWTSecret = words[1]
+		return strings.Join(words[2:], " "), nil
 	}
 }
 func DBConnectAndPopulateDBVar() error {

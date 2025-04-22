@@ -1,9 +1,11 @@
 package controllers
 
 import (
+	"bytes"
 	"cloud.google.com/go/storage"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/ShijuPJohn/synapticz_backend/models"
 	"github.com/ShijuPJohn/synapticz_backend/util"
@@ -12,6 +14,8 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"io"
+	"math/rand"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -21,7 +25,39 @@ func Index(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "page": "index page"})
 }
 
-// creating a new user
+func sendVerificationEmail(to, subject, htmlBody string) error {
+	payload := map[string]interface{}{
+		"from":    "Synapticz <no-reply@synapticz.com>",
+		"to":      []string{to},
+		"subject": subject,
+		"html":    htmlBody,
+	}
+
+	body, _ := json.Marshal(payload)
+
+	req, err := http.NewRequest("POST", "https://api.resend.com/emails", bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+util.MailAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	res, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(res.Body)
+		return fmt.Errorf("Email failed: %s", string(bodyBytes))
+	}
+
+	return nil
+}
+
 func CreateUser(c *fiber.Ctx) error {
 	u := new(models.User)
 	if err := c.BodyParser(u); err != nil {
@@ -38,20 +74,20 @@ func CreateUser(c *fiber.Ctx) error {
 			"message": err.Error(),
 		})
 	}
-	fmt.Println("here1")
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
 	if err != nil {
-		fmt.Println("here2", err.Error())
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": err.Error(),
 		})
 	}
 	u.Password = string(hash)
-	fmt.Println("here3")
+
+	// Step 1: Create user with verified = false
 	query := `INSERT INTO users 
-	(name, email, password, role, linkedin, facebook, instagram, profile_pic, about)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	(name, email, password, role, linkedin, facebook, instagram, profile_pic, about, verified)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
 	RETURNING id`
 
 	err = util.DB.QueryRow(
@@ -66,7 +102,7 @@ func CreateUser(c *fiber.Ctx) error {
 		u.ProfilePic,
 		u.About,
 	).Scan(&u.ID)
-	fmt.Println("here4")
+
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
@@ -74,19 +110,180 @@ func CreateUser(c *fiber.Ctx) error {
 			"error":   err.Error(),
 		})
 	}
-	fmt.Println("here5")
-	token, err := util.JwtGenerate(*u, strconv.Itoa(int(u.ID)))
+
+	// Step 2: Generate 6-digit verification code
+	code := fmt.Sprintf("%06d", rand.Intn(1000000))
+
+	// Step 3: Store the code in verification table
+	_, err = util.DB.Exec(`
+		INSERT INTO email_verification_codes (user_id, code, expires_at,email)
+		VALUES ($1, $2, $3, $4)
+	`, u.ID, code, time.Now().Add(10*time.Minute), u.Email)
+
 	if err != nil {
-		fmt.Println("Error Here.....", err.Error())
-		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status": "error",
+			"error":  "Failed to save verification code",
+		})
 	}
 
+	// Step 4: Send code via email using Resend
+	emailBody := fmt.Sprintf(`
+    <div style="font-family: Arial, sans-serif; font-size: 16px; color: #333;">
+        <p>Hello,</p>
+        <p>Thank you for signing up for <strong>Synapticz</strong>.</p>
+        <p>Your verification code is:</p>
+        <p style="font-size: 24px; font-weight: bold; color: #0ea5e9;">%s</p>
+        <p>This code is valid for <strong>10 minutes</strong>.</p>
+        <p>If you didn't request this, please ignore this email.</p>
+        <br>
+        <p>Best regards,<br>Team Synapticz</p>
+    </div>
+`, code)
+	err = sendVerificationEmail(u.Email, "Verify your Synapticz account", emailBody)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status": "error",
+			"error":  "Failed to send verification email",
+		})
+	}
+
+	// Step 5: Respond with success (login token can be generated after verification)
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"status":  "success",
-		"message": "User Created",
-		"token":   token,
-		"user_id": u.ID,
+		"status":     "pending",
+		"message":    "User created. Verification email sent.",
+		"user_id":    u.ID,
+		"user_email": u.Email,
 	})
+}
+
+func VerifyUserEmail(c *fiber.Ctx) error {
+	type VerifyDTO struct {
+		Email string `json:"email"`
+		Code  string `json:"code"`
+	}
+
+	var dto VerifyDTO
+	if err := c.BodyParser(&dto); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid input",
+		})
+	}
+
+	var user models.User
+	query := `SELECT id, name, email, password, role, linkedin, facebook, instagram, profile_pic, about 
+			  FROM users WHERE email = $1 AND deleted = false`
+
+	err := util.DB.QueryRow(query, dto.Email).Scan(
+		&user.ID, &user.Name, &user.Email, &user.Password, &user.Role,
+		&user.LinkedIn, &user.Facebook, &user.Instagram, &user.ProfilePic, &user.About,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database error"})
+	}
+
+	// Step 2: Check if code matches and is not expired
+	var expiresAt time.Time
+	err = util.DB.QueryRow(`
+		SELECT expires_at FROM email_verification_codes 
+		WHERE user_id = $1 AND code = $2
+	`, user.ID, dto.Code).Scan(&expiresAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid or expired code"})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database error"})
+	}
+
+	if time.Now().After(expiresAt) {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Verification code has expired"})
+	}
+
+	// Step 3: Mark user as verified
+	_, err = util.DB.Exec(`UPDATE users SET verified = true WHERE id = $1`, user.ID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to verify user"})
+	}
+
+	// Step 4: Delete the used verification code
+	_, _ = util.DB.Exec(`DELETE FROM email_verification_codes WHERE user_id = $1`, user.ID)
+
+	// Step 5: Generate JWT token
+	token, err := util.JwtGenerate(user, strconv.Itoa(int(user.ID)))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+	}
+
+	// Step 6: Return token and user ID
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": "Email verified and user logged in",
+		"token":   token,
+		"user_id": user.ID,
+	})
+}
+
+func ResendVerificationCode(c *fiber.Ctx) error {
+	type Request struct {
+		ID    int    `json:"ID"`
+		Email string `json:"email"`
+	}
+	var req Request
+	if err := c.BodyParser(&req); err != nil || req.Email == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid email " + err.Error()})
+	}
+
+	// Check if a code already exists and how recently it was sent
+	var lastSent time.Time
+	err := util.DB.QueryRow(`
+		SELECT created_at FROM email_verification_codes WHERE email = $1
+	`, req.Email).Scan(&lastSent)
+
+	if err != nil && err != sql.ErrNoRows {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to check timestamp " + err.Error()})
+	}
+
+	if err == nil && time.Since(lastSent) < 45*time.Second {
+		return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "Please wait before resending"})
+	}
+
+	// Generate new 6-digit code
+	code := fmt.Sprintf("%06d", rand.Intn(1000000))
+
+	// Upsert the verification code
+	_, err = util.DB.Exec(`
+		INSERT INTO email_verification_codes (user_id, email, code, created_at, expires_at)
+		VALUES ($1, $2,$3, $4,$5)
+		ON CONFLICT (email)
+		DO UPDATE SET code = EXCLUDED.code, created_at = EXCLUDED.created_at
+	`, req.ID, req.Email, code, time.Now(), time.Now().Add(10*time.Minute))
+
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to store code " + err.Error()})
+	}
+
+	// Send email via Resend
+	emailBody := fmt.Sprintf(`
+    <div style="font-family: Arial, sans-serif; font-size: 16px; color: #333;">
+        <p>Hello,</p>
+        <p>Thank you for signing up for <strong>Synapticz</strong>.</p>
+        <p>Your verification code is:</p>
+        <p style="font-size: 24px; font-weight: bold; color: #0ea5e9;">%s</p>
+        <p>This code is valid for <strong>10 minutes</strong>.</p>
+        <p>If you didn't request this, please ignore this email.</p>
+        <br>
+        <p>Best regards,<br>Team Synapticz</p>
+    </div>
+`, code)
+	err = sendVerificationEmail(req.Email, "Verify your Synapticz account", emailBody)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to send email  " + err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "Verification code resent"})
 }
 
 func LoginUser(c *fiber.Ctx) error {
@@ -220,7 +417,6 @@ func EditUserProfile(c *fiber.Ctx) error {
 			"error": "Invalid input: " + err.Error(),
 		})
 	}
-	fmt.Println(*payload.Goal)
 
 	query := `
 		UPDATE users

@@ -11,9 +11,13 @@ func ddlStrings() []string {
     id SERIAL PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
     email VARCHAR(128) UNIQUE NOT NULL,
-    password VARCHAR(64) NOT NULL,
+    password VARCHAR(512) NOT NULL,
     role VARCHAR(50) NOT NULL CHECK(role='admin' or role='user' or role='owner') DEFAULT 'user',
     password_changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    country VARCHAR(128),
+    country_code VARCHAR(8),
+    mobile_number VARCHAR(16),
+    mobile_number_verified BOOLEAN DEFAULT false,
     verified BOOLEAN DEFAULT false,
     linkedin VARCHAR(255),
     facebook VARCHAR(255),
@@ -48,7 +52,7 @@ func ddlStrings() []string {
     user_id INT NOT NULL,
     question_id INT NOT NULL,
     PRIMARY KEY (user_id, question_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
 );`,
 		`CREATE TABLE IF NOT EXISTS  question_sets (
@@ -70,7 +74,7 @@ func ddlStrings() []string {
 )`,
 		`CREATE TABLE IF NOT EXISTS  user_questionsets_editors (
     user_id INT NOT NULL,
-    question_set_id INT NOT NULL,
+    question_set_id INT,
     PRIMARY KEY (user_id, question_set_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (question_set_id) REFERENCES question_sets(id) ON DELETE CASCADE
@@ -81,7 +85,7 @@ func ddlStrings() []string {
     mark FLOAT default 1,
     PRIMARY KEY (question_set_id, question_id),
     FOREIGN KEY (question_set_id) REFERENCES question_sets(id) ON DELETE CASCADE ,
-    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE SET NULL 
+    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE 
 )`,
 		`CREATE TABLE  IF NOT EXISTS test_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -105,7 +109,7 @@ func ddlStrings() []string {
 )`,
 		`CREATE TABLE IF NOT EXISTS test_session_question_answers(
   test_session_id UUID REFERENCES test_sessions(id) ON DELETE CASCADE,
-  question_id INT REFERENCES questions(id) ON DELETE SET NULL,
+  question_id INT REFERENCES questions(id) ON DELETE CASCADE ,
   correct_answer_list INT[],
   selected_answer_list INT[],
   questions_total_mark FLOAT,
@@ -197,13 +201,20 @@ CREATE TABLE IF NOT EXISTS user_daily_questions (
     user_id INT NOT NULL,
     question_id INT NOT NULL,
     answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    answered_correct BOOLEAN DEFAULT FALSE,
     PRIMARY KEY (user_id, question_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
 );
-
-
-`)
+`, `CREATE TABLE IF NOT EXISTS email_verification_codes (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email VARCHAR(512) NOT NULL,
+    code VARCHAR(6) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                                                    
+);`)
 	return sqlStrings
 }
 func CreateTableIfNotExists() error {
@@ -218,6 +229,12 @@ func CreateTableIfNotExists() error {
 }
 func dropTables() []string {
 	return []string{
+		"DROP TABLE IF EXISTS email_verification_codes",
+		"DROP TABLE IF EXISTS user_daily_questions",
+		"DROP TABLE IF EXISTS question_error_reports",
+		"DROP TABLE IF EXISTS saved_explanations",
+		"DROP TABLE IF EXISTS bookmarked_questions",
+		"DROP TABLE IF EXISTS payments",
 		"DROP TABLE IF EXISTS questionsets_questionsettags",
 		"DROP TABLE IF EXISTS user_daily_activity",
 		"DROP TABLE IF EXISTS question_questiontags",
@@ -225,9 +242,9 @@ func dropTables() []string {
 		"DROP TABLE IF EXISTS questiontags",
 		"DROP TABLE IF EXISTS tags",
 		"DROP TABLE IF EXISTS testsession_questions",
-		"DROP TABLE IF EXISTS test_sessions",
 		"DROP TABLE IF EXISTS question_set_questions",
 		"DROP TABLE IF EXISTS user_questionsets_editors",
+		"DROP TABLE IF EXISTS test_sessions",
 		"DROP TABLE IF EXISTS question_sets",
 		"DROP TABLE IF EXISTS user_questions_editors",
 		"DROP TABLE IF EXISTS questions",

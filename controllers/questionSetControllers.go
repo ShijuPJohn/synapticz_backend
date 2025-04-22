@@ -276,6 +276,8 @@ func GetQuestionSets(c *fiber.Ctx) error {
 
 	for rows.Next() {
 		var qs QuestionSetResponse
+		var coverImage sql.NullString
+
 		err := rows.Scan(
 			&qs.ID,
 			&qs.Name,
@@ -288,7 +290,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 			&qs.AssociatedResource,
 			&qs.CreatedByID,
 			&qs.CreatedByName,
-			&qs.CoverImage,
+			&coverImage,
 			&qs.CreatedAt,
 			&qs.TotalQuestions,
 		)
@@ -297,6 +299,12 @@ func GetQuestionSets(c *fiber.Ctx) error {
 				"error": "Failed to scan question set: " + err.Error(),
 			})
 		}
+
+		qs.CoverImage = ""
+		if coverImage.Valid {
+			qs.CoverImage = coverImage.String
+		}
+
 		results = append(results, qs)
 	}
 
