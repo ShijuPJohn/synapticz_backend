@@ -1,14 +1,19 @@
 package controllers
 
 import (
+	"cloud.google.com/go/storage"
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/ShijuPJohn/synapticz_backend/models"
 	"github.com/ShijuPJohn/synapticz_backend/util"
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"io"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -159,36 +164,18 @@ func LoginUser(c *fiber.Ctx) error {
 
 func GetUserDetails(c *fiber.Ctx) error {
 	// Get user ID from URL params
-	paramID := c.Params("id")
-	requestedID, err := strconv.Atoi(paramID)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Invalid user ID in URL",
-		})
-	}
-
-	// Get user from context (set by middleware)
-	authenticatedUser := c.Locals("user").(models.User)
-
-	// Check if the user is requesting their own details
-	if int(authenticatedUser.ID) != requestedID {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"status":  "error",
-			"message": "You are not authorized to view this user's details",
-		})
-	}
+	userId := c.Locals("user").(models.User).ID
 
 	// Fetch user details from DB manually
 	var user models.User
-	query := `SELECT id, name, email, role, password_changed_at, verified, linkedin, facebook, instagram, profile_pic, about, deleted, created_at, updated_at 
+	query := `SELECT id, name, email, role, password_changed_at, verified, linkedin, facebook, instagram, profile_pic, about, deleted, created_at, updated_at ,goal
 			  FROM users WHERE id = $1 AND deleted = false`
 
-	row := util.DB.QueryRow(query, requestedID)
-	err = row.Scan(
+	row := util.DB.QueryRow(query, userId)
+	err := row.Scan(
 		&user.ID, &user.Name, &user.Email, &user.Role, &user.PasswordChangedAt,
 		&user.Verified, &user.LinkedIn, &user.Facebook, &user.Instagram,
-		&user.ProfilePic, &user.About, &user.Deleted, &user.CreatedAt, &user.UpdatedAt,
+		&user.ProfilePic, &user.About, &user.Deleted, &user.CreatedAt, &user.UpdatedAt, &user.Goal,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -212,12 +199,160 @@ func GetUserDetails(c *fiber.Ctx) error {
 		"user":   user,
 	})
 }
+
+func EditUserProfile(c *fiber.Ctx) error {
+	user := c.Locals("user").(models.User)
+
+	// Define a struct for updatable fields only
+	type UpdatePayload struct {
+		Name       *string `json:"name"`
+		About      *string `json:"about"`
+		Goal       *string `json:"goal"`
+		LinkedIn   *string `json:"linkedin"`
+		Facebook   *string `json:"facebook"`
+		Instagram  *string `json:"instagram"`
+		ProfilePic *string `json:"profile_pic"`
+	}
+
+	var payload UpdatePayload
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid input: " + err.Error(),
+		})
+	}
+	fmt.Println(*payload.Goal)
+
+	query := `
+		UPDATE users
+		SET
+			name = COALESCE($1, name),
+			about = COALESCE($2, about),
+			goal = COALESCE($3, goal),
+			linkedin = COALESCE($4, linkedin),
+			facebook = COALESCE($5, facebook),
+			instagram = COALESCE($6, instagram),
+			profile_pic = COALESCE($7, profile_pic),
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = $8 AND deleted = false
+		RETURNING id
+	`
+
+	var updatedID int
+	err := util.DB.QueryRow(
+		query,
+		payload.Name,
+		payload.About,
+		payload.Goal,
+		payload.LinkedIn,
+		payload.Facebook,
+		payload.Instagram,
+		payload.ProfilePic,
+		user.ID,
+	).Scan(&updatedID)
+
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error":  "Failed to update user profile",
+			"detail": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": "Profile updated successfully",
+	})
+}
+
+const (
+	bucketName   = "synapticz-storage"               // ⬅️ Change this
+	storageURL   = "https://storage.googleapis.com/" // Base URL
+	uploadFolder = "profile_pics/"                   // Optional: for organization
+)
+
+func UploadProfilePic(c *fiber.Ctx) error {
+	// Get the file from the form
+	fileHeader, err := c.FormFile("file")
+	userName := c.Locals("user").(models.User).Name
+	cleanedName := SlugifyUsername(userName)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "File is required : " + err.Error(),
+		})
+	}
+
+	// Open the uploaded file
+	file, err := fileHeader.Open()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to open file : " + err.Error(),
+		})
+	}
+	defer file.Close()
+
+	// Generate a unique filename with extension
+	uniqueFilename := fmt.Sprintf("%s-%s%s", cleanedName, uuid.New().String(), getFileExtension(fileHeader.Filename))
+	objectName := uploadFolder + uniqueFilename
+
+	// Upload to GCS
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create GCS client : " + err.Error(),
+		})
+	}
+	defer client.Close()
+
+	writer := client.Bucket(bucketName).Object(objectName).NewWriter(ctx)
+	writer.ContentType = fileHeader.Header.Get("Content-Type")
+
+	if _, err := io.Copy(writer, file); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to upload image : " + err.Error(),
+		})
+	}
+
+	if err := writer.Close(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to finalize upload : " + err.Error(),
+		})
+	}
+
+	publicURL := fmt.Sprintf("%s%s/%s", storageURL, bucketName, objectName)
+
+	return c.JSON(fiber.Map{
+		"url": publicURL,
+	})
+}
+
+func getFileExtension(filename string) string {
+	for i := len(filename) - 1; i >= 0; i-- {
+		if filename[i] == '.' {
+			return filename[i:]
+		}
+	}
+	return ""
+}
+func SlugifyUsername(name string) string {
+	// Trim leading/trailing spaces and replace all internal spaces with "-"
+	return strings.ReplaceAll(strings.TrimSpace(name), " ", "-")
+}
 func GetUserActivityOverview(c *fiber.Ctx) error {
 	user := c.Locals("user").(models.User)
 
-	today := time.Now().UTC()
-	sevenDaysAgo := today.AddDate(0, 0, -6).Format("2006-01-02") // include today
-	startOfYear := time.Date(today.Year(), 1, 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+	// Step 0: Get timezone from query param
+	timezone := c.Query("tz", "UTC") // fallback to UTC
+
+	// Step 1: Calculate local "today" and last 6 days in UTC for filtering
+	now := time.Now().UTC()
+	tzLoc, err := time.LoadLocation(timezone)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid timezone"})
+	}
+
+	localToday := now.In(tzLoc).Truncate(24 * time.Hour)
+	sevenDaysAgo := localToday.AddDate(0, 0, -6)
+	startOfYear := time.Date(localToday.Year(), 1, 1, 0, 0, 0, 0, time.UTC)
 
 	type DayActivity struct {
 		Date              string   `json:"date"`
@@ -228,13 +363,13 @@ func GetUserActivityOverview(c *fiber.Ctx) error {
 
 	dayMap := make(map[string]*DayActivity)
 
-	// Step 1: Get daily questions answered from user_daily_questions
+	// Step 2: Daily answered questions (converted by timezone)
 	rows, err := util.DB.Query(`
-	SELECT TO_CHAR(activity_date, 'YYYY-MM-DD'), COUNT(*) 
-	FROM user_daily_questions 
-	WHERE user_id = $1 AND activity_date >= $2
-	GROUP BY activity_date
-`, user.ID, sevenDaysAgo)
+		SELECT TO_CHAR(answered_at AT TIME ZONE 'UTC' AT TIME ZONE $2, 'YYYY-MM-DD') AS local_date, COUNT(*) 
+		FROM user_daily_questions 
+		WHERE user_id = $1 AND answered_at >= $3
+		GROUP BY local_date
+	`, user.ID, timezone, sevenDaysAgo)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch questions answered"})
 	}
@@ -243,80 +378,90 @@ func GetUserActivityOverview(c *fiber.Ctx) error {
 	for rows.Next() {
 		var date string
 		var count int
-		if err := rows.Scan(&date, &count); err != nil {
-			continue
-		}
-		dayMap[date] = &DayActivity{
-			Date:              date,
-			QuestionsAnswered: count,
+		if err := rows.Scan(&date, &count); err == nil {
+			dayMap[date] = &DayActivity{Date: date, QuestionsAnswered: count}
 		}
 	}
 
-	// Step 2: Get test sessions created in last 7 days
+	// Step 3: Test sessions created
 	rows, err = util.DB.Query(`
-		SELECT started_time::date, name 
+		SELECT TO_CHAR(started_time AT TIME ZONE 'UTC' AT TIME ZONE $2, 'YYYY-MM-DD'), name 
 		FROM test_sessions 
-		WHERE taken_by_id = $1 AND started_time::date >= $2
-	`, user.ID, sevenDaysAgo)
+		WHERE taken_by_id = $1 AND started_time >= $3
+	`, user.ID, timezone, sevenDaysAgo)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch test sessions created"})
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var date string
-		var name string
-		if err := rows.Scan(&date, &name); err != nil {
-			continue
+		var date, name string
+		if err := rows.Scan(&date, &name); err == nil {
+			if _, exists := dayMap[date]; !exists {
+				dayMap[date] = &DayActivity{Date: date}
+			}
+			dayMap[date].TestsCreated = append(dayMap[date].TestsCreated, name)
 		}
-		if _, exists := dayMap[date]; !exists {
-			dayMap[date] = &DayActivity{Date: date}
-		}
-		dayMap[date].TestsCreated = append(dayMap[date].TestsCreated, name)
 	}
 
-	// Step 3: Get test sessions finished in last 7 days
+	// Step 4: Test sessions completed
 	rows, err = util.DB.Query(`
-		SELECT finished_time::date, name 
+		SELECT TO_CHAR(finished_time AT TIME ZONE 'UTC' AT TIME ZONE $2, 'YYYY-MM-DD'), name 
 		FROM test_sessions 
-		WHERE taken_by_id = $1 AND finished = true AND finished_time::date >= $2
-	`, user.ID, sevenDaysAgo)
+		WHERE taken_by_id = $1 AND finished = true AND finished_time IS NOT NULL AND finished_time >= $3
+	`, user.ID, timezone, sevenDaysAgo)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch test sessions finished"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch test sessions completed"})
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var date string
-		var name string
-		if err := rows.Scan(&date, &name); err != nil {
-			continue
+		var date, name string
+		if err := rows.Scan(&date, &name); err == nil {
+			if _, exists := dayMap[date]; !exists {
+				dayMap[date] = &DayActivity{Date: date}
+			}
+			dayMap[date].TestsCompleted = append(dayMap[date].TestsCompleted, name)
 		}
-		if _, exists := dayMap[date]; !exists {
-			dayMap[date] = &DayActivity{Date: date}
-		}
-		dayMap[date].TestsCompleted = append(dayMap[date].TestsCompleted, name)
 	}
 
-	// Step 4: Convert dayMap to sorted array (past 7 days including today)
+	// Step 5: Normalize output for the past 7 days
 	dailyActivities := []DayActivity{}
-	for d := 0; d <= 6; d++ {
-		date := today.AddDate(0, 0, -d).Format("2006-01-02")
-		if val, exists := dayMap[date]; exists {
-			dailyActivities = append(dailyActivities, *val)
+	for i := 0; i < 7; i++ {
+		date := localToday.AddDate(0, 0, -i).Format("2006-01-02")
+		if dayMap[date] != nil {
+			if dayMap[date].TestsCreated == nil {
+				dayMap[date].TestsCreated = []string{}
+			}
+			if dayMap[date].TestsCompleted == nil {
+				dayMap[date].TestsCompleted = []string{}
+			}
+			dailyActivities = append(dailyActivities, *dayMap[date])
 		} else {
-			dailyActivities = append(dailyActivities, DayActivity{Date: date})
+			dailyActivities = append(dailyActivities, DayActivity{
+				Date:              date,
+				QuestionsAnswered: 0,
+				TestsCreated:      []string{},
+				TestsCompleted:    []string{},
+			})
 		}
 	}
 
-	// Step 5: Build 1-year summary (for GitHub-style heatmap)
+	// Step 6: Build year summary
 	summaryMap := map[string]int{}
 	rows, err = util.DB.Query(`
-		SELECT activity_date, COUNT(*) 
-		FROM user_daily_questions 
-		WHERE user_id = $1 AND activity_date >= $2
-		GROUP BY activity_date
-	`, user.ID, startOfYear)
+  WITH all_activities AS (
+      SELECT (answered_at AT TIME ZONE $1)::date AS activity_date FROM user_daily_questions WHERE user_id = $2
+      UNION ALL
+      SELECT (started_time AT TIME ZONE $1)::date AS activity_date FROM test_sessions WHERE taken_by_id = $2
+      UNION ALL
+      SELECT (finished_time AT TIME ZONE $1)::date AS activity_date FROM test_sessions WHERE taken_by_id = $2 AND finished = true
+  )
+  SELECT activity_date, COUNT(*) 
+  FROM all_activities
+  WHERE activity_date >= $3
+  GROUP BY activity_date
+`, timezone, user.ID, startOfYear)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get yearly summary"})
 	}
@@ -330,17 +475,23 @@ func GetUserActivityOverview(c *fiber.Ctx) error {
 		}
 	}
 
-	// Step 6: Get user profile data
+	// Step 7: Profile
 	var profile struct {
-		Name       string  `json:"name"`
-		Email      string  `json:"email"`
-		ProfilePic *string `json:"profile_pic,omitempty"`
-		About      *string `json:"about,omitempty"`
+		Name       string    `json:"name"`
+		Email      string    `json:"email"`
+		ProfilePic *string   `json:"profile_pic,omitempty"`
+		About      *string   `json:"about,omitempty"`
+		IsPremium  bool      `json:"isPremium"`
+		JoinedAt   time.Time `json:"joinedAt"`
+		Goal       *string   `json:"goal"`
+		Facebook   *string   `json:"facebook"`
+		Linkedin   *string   `json:"linkedin"`
+		Instagram  *string   `json:"instagram"`
 	}
 	err = util.DB.QueryRow(`
-		SELECT name, email, profile_pic, about
+		SELECT name, email, profile_pic, about, is_premium, created_at, goal, facebook, linkedin, instagram
 		FROM users WHERE id = $1
-	`, user.ID).Scan(&profile.Name, &profile.Email, &profile.ProfilePic, &profile.About)
+	`, user.ID).Scan(&profile.Name, &profile.Email, &profile.ProfilePic, &profile.About, &profile.IsPremium, &profile.JoinedAt, &profile.Goal, &profile.Facebook, &profile.Linkedin, &profile.Instagram)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch user profile"})
 	}
