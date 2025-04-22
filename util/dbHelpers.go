@@ -23,6 +23,7 @@ func ddlStrings() []string {
     premium_since TIMESTAMP,
     premium_expiry TIMESTAMP,
     about TEXT,
+    goal TEXT,
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -195,12 +196,12 @@ CREATE TABLE IF NOT EXISTS question_error_reports (
 CREATE TABLE IF NOT EXISTS user_daily_questions (
     user_id INT NOT NULL,
     question_id INT NOT NULL,
-    activity_date DATE DEFAULT CURRENT_DATE,
     answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (user_id, question_id, activity_date),
+    PRIMARY KEY (user_id, question_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
 );
+
 
 `)
 	return sqlStrings

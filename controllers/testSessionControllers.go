@@ -420,12 +420,11 @@ func UpdateTestSession(c *fiber.Ctx) error {
 
 	// Check daily question limit for non-premium users
 	if !user.IsPremium {
-		today := time.Now().UTC().Format("2006-01-02")
 		var answeredToday int
 		err := tx.QueryRow(
 			`SELECT COUNT(*) 
-	 FROM user_daily_questions 
-	 WHERE user_id = $1 AND activity_date = $2`, user.ID, today).Scan(&answeredToday)
+			 FROM user_daily_questions 
+			 WHERE user_id = $1 AND answered_at::date = CURRENT_DATE`, user.ID).Scan(&answeredToday)
 
 		if err != nil && err != sql.ErrNoRows {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -437,10 +436,9 @@ func UpdateTestSession(c *fiber.Ctx) error {
 		err = tx.QueryRow(
 			`SELECT questions_limit 
              FROM user_daily_activity 
-             WHERE user_id = $1 AND activity_date = $2`, user.ID, today).Scan(&questionLimit)
+             WHERE user_id = $1 AND activity_date = CURRENT_DATE`, user.ID).Scan(&questionLimit)
 		if err != nil {
 			if err == sql.ErrNoRows {
-				// Default limit if no record exists
 				questionLimit = 20
 			} else {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -505,14 +503,13 @@ func UpdateTestSession(c *fiber.Ctx) error {
 		totalMark := answer["questions_total_mark"].(float64)
 		answered := answer["answered"].(bool)
 
-		totalMarks += totalMark // accumulate total marks
+		totalMarks += totalMark
 
-		// Check if this question was newly answered
 		var previouslyAnswered bool
 		err = tx.QueryRow(
 			`SELECT answered 
-             FROM test_session_question_answers 
-             WHERE test_session_id = $1 AND question_id = $2`,
+			 FROM test_session_question_answers 
+			 WHERE test_session_id = $1 AND question_id = $2`,
 			testSessionID, qid).Scan(&previouslyAnswered)
 		if err != nil && err != sql.ErrNoRows {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -524,7 +521,6 @@ func UpdateTestSession(c *fiber.Ctx) error {
 			newlyAnsweredQuestions = append(newlyAnsweredQuestions, qid)
 		}
 
-		// Get question type
 		var qType string
 		err = tx.QueryRow(`SELECT question_type FROM questions WHERE id = $1`, qid).Scan(&qType)
 		if err != nil {
@@ -533,9 +529,7 @@ func UpdateTestSession(c *fiber.Ctx) error {
 			})
 		}
 
-		// Scoring logic
 		var scored float64 = 0
-
 		if qType == "m-choice" {
 			if len(selectedList) == 1 && len(correctList) == 1 && selectedList[0] == correctList[0] {
 				scored = totalMark
@@ -561,6 +555,7 @@ func UpdateTestSession(c *fiber.Ctx) error {
 		}
 
 		totalScored += scored
+
 		_, err = tx.Exec(`
 			UPDATE test_session_question_answers
 			SET selected_answer_list = $1,
@@ -568,7 +563,6 @@ func UpdateTestSession(c *fiber.Ctx) error {
 			    answered = $3
 			WHERE test_session_id = $4 AND question_id = $5
 		`, pq.Array(selectedList), scored, answered, testSessionID, qid)
-
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": fmt.Sprintf("Failed to update answer for question %d: %v", qid, err),
@@ -576,7 +570,6 @@ func UpdateTestSession(c *fiber.Ctx) error {
 		}
 	}
 
-	// Update test session progress
 	_, err = tx.Exec(`
 		UPDATE test_sessions
 		SET current_question_num = $1,
@@ -589,38 +582,17 @@ func UpdateTestSession(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update test session"})
 	}
 
-	// Log daily activity for newly answered questions
+	// Log individual question entries (no activity_date)
 	if len(newlyAnsweredQuestions) > 0 {
-		today := time.Now().UTC().Format("2006-01-02")
-
-		// Upsert daily activity
-		//_, err = tx.Exec(`
-		//	INSERT INTO user_daily_activity (user_id, activity_date, questions_answered)
-		//	VALUES ($1, $2, $3)
-		//	ON CONFLICT (user_id, activity_date)
-		//	DO UPDATE SET
-		//		questions_answered = user_daily_activity.questions_answered + EXCLUDED.questions_answered,
-		//		questions_limit = CASE
-		//			WHEN user_daily_activity.questions_limit = 0 THEN EXCLUDED.questions_limit
-		//			ELSE user_daily_activity.questions_limit
-		//		END
-		//`, user.ID, today, len(newlyAnsweredQuestions))
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Failed to update daily activity",
-			})
-		}
-
-		// Record individual questions answered today
 		for _, qid := range newlyAnsweredQuestions {
 			_, err = tx.Exec(`
-				INSERT INTO user_daily_questions (user_id, question_id, activity_date)
-				VALUES ($1, $2, $3)
-				ON CONFLICT (user_id, question_id, activity_date) DO NOTHING
-			`, user.ID, qid, today)
+				INSERT INTO user_daily_questions (user_id, question_id)
+				VALUES ($1, $2)
+				ON CONFLICT DO NOTHING
+			`, user.ID, qid)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"error": "Failed to record answered question",
+					"error": "Failed to record answered question : " + err.Error(),
 				})
 			}
 		}

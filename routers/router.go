@@ -10,16 +10,17 @@ func SetupRoutes(app *fiber.App) {
 
 	//Index
 	api := app.Group("/api")
-	api.Get("/", controllers.Index)
+	api.Post("/image-upload", middlewares.Protected(), controllers.UploadProfilePic)
 	//api.Get("/home", middlewares.Protected(), handlers.Home)
 
 	//Auth
 	auth := api.Group("/auth")
 	//auth.Get("/users", controllers.GetAllUsers)
 	auth.Post("/users", controllers.CreateUser)
+	auth.Get("/users", middlewares.Protected(), controllers.GetUserDetails)
+	auth.Put("/users", middlewares.Protected(), controllers.EditUserProfile)
 	auth.Get("/users/overview", middlewares.Protected(), controllers.GetUserActivityOverview)
 	auth.Post("/login", controllers.LoginUser)
-	auth.Get("/users/:id", middlewares.Protected(), controllers.GetUserDetails)
 
 	//
 	// Questions
