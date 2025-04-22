@@ -19,6 +19,8 @@ func SetupRoutes(app *fiber.App) {
 	auth.Post("/users", controllers.CreateUser)
 	auth.Get("/users", middlewares.Protected(), controllers.GetUserDetails)
 	auth.Put("/users", middlewares.Protected(), controllers.EditUserProfile)
+	auth.Post("/users/verify", controllers.VerifyUserEmail)
+	auth.Post("/users/resend-verification", controllers.ResendVerificationCode)
 	auth.Get("/users/overview", middlewares.Protected(), controllers.GetUserActivityOverview)
 	auth.Post("/login", controllers.LoginUser)
 

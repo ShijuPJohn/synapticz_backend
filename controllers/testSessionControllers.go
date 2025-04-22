@@ -173,6 +173,7 @@ func GetTestSession(c *fiber.Ctx) error {
 
 	// Get test session details
 	var session models.TestSession
+	var finishedTime sql.NullTime
 	err = util.DB.QueryRow(
 		`SELECT id, finished, started, name, question_set_id, taken_by_id,
                 n_total_questions, current_question_num, n_correctly_answered,
@@ -182,9 +183,12 @@ func GetTestSession(c *fiber.Ctx) error {
 		&session.ID, &session.Finished, &session.Started, &session.Name, &session.QuestionSetID,
 		&session.TakenByID, &session.NTotalQuestions, &session.CurrentQuestionNum,
 		&session.NCorrectlyAnswered, &session.Rank, &session.TotalMarks, &session.ScoredMarks,
-		&session.StartedTime, &session.FinishedTime, &session.Mode)
+		&session.StartedTime, &finishedTime, &session.Mode)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch test session " + err.Error()})
+	}
+	if finishedTime.Valid {
+		session.FinishedTime = finishedTime.Time
 	}
 
 	// Get question set details
@@ -585,11 +589,43 @@ func UpdateTestSession(c *fiber.Ctx) error {
 	// Log individual question entries (no activity_date)
 	if len(newlyAnsweredQuestions) > 0 {
 		for _, qid := range newlyAnsweredQuestions {
+			var answeredCorrect bool
+
+			// Look up selected/correct lists again (already parsed before)
+			answer := dto.QuestionAnswerData[strconv.Itoa(qid)].(map[string]interface{})
+			selectedListRaw, _ := answer["selected_answer_list"].([]interface{})
+			correctListRaw, _ := answer["correct_options"].([]interface{})
+
+			selectedList := make([]int64, len(selectedListRaw))
+			for i, v := range selectedListRaw {
+				selectedList[i] = int64(v.(float64))
+			}
+			correctList := make([]int64, len(correctListRaw))
+			for i, v := range correctListRaw {
+				correctList[i] = int64(v.(float64))
+			}
+
+			if len(selectedList) == len(correctList) {
+				match := true
+				correctMap := make(map[int64]bool)
+				for _, c := range correctList {
+					correctMap[c] = true
+				}
+				for _, s := range selectedList {
+					if !correctMap[s] {
+						match = false
+						break
+					}
+				}
+				answeredCorrect = match
+			}
+
 			_, err = tx.Exec(`
-				INSERT INTO user_daily_questions (user_id, question_id)
-				VALUES ($1, $2)
-				ON CONFLICT DO NOTHING
-			`, user.ID, qid)
+			INSERT INTO user_daily_questions (user_id, question_id, answered_correct)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (user_id, question_id) DO UPDATE SET answered_correct = EXCLUDED.answered_correct
+		`, user.ID, qid, answeredCorrect)
+
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"error": "Failed to record answered question : " + err.Error(),
@@ -936,7 +972,7 @@ func GetTestHistory(c *fiber.Ctx) error {
 		Subject      string    `json:"subject"`
 		Exam         string    `json:"exam"`
 		Language     string    `json:"language"`
-		CoverImage   string    `json:"coverImage"`
+		CoverImage   *string   `json:"coverImage"`
 		UpdatedTime  time.Time `json:"updatedTime"`
 	}
 
