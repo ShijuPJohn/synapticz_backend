@@ -19,6 +19,9 @@ type User struct {
 	CreatedAt         time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
 	IsPremium         bool      `json:"isPremium"`
+	Country           string    `json:"country"`
+	CountryCode       string    `json:"country_code"`
+	MobileNumber      string    `json:"mobile_number"`
 	Goal              *string   `json:"goal"`
 }
 
