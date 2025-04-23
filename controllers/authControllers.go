@@ -127,7 +127,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			SameSite: "Lax",
 			Path:     "/",
 		})
-		return c.Redirect("http://localhost:3000/verify-oauth-newuser")
+		return c.Redirect("https://synapticz-frontend-1037996227658.asia-southeast1.run.app/verify-oauth-newuser")
 	} else if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query user: " + err.Error()})
 	} else {
@@ -146,7 +146,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			SameSite: "Lax",
 			Path:     "/",
 		})
-		return c.Redirect("http://localhost:3000/verify-oauth-login")
+		return c.Redirect("https://synapticz-frontend-1037996227658.asia-southeast1.run.app/verify-oauth-login")
 	}
 
 }
