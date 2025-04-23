@@ -83,7 +83,7 @@ func DBConnectAndPopulateDBVar() error {
 }
 func GetGoogleConfig() *oauth2.Config {
 	return &oauth2.Config{
-		RedirectURL:  "http://localhost:8080/api/auth/google-callback",
+		RedirectURL:  "https://synapticz-backend-go-1037996227658.asia-southeast1.run.app",
 		ClientID:     ClientID,
 		ClientSecret: ClientSecret,
 		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"},
