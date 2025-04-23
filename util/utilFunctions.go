@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 	"log"
 	"os"
 	"strings"
@@ -17,6 +19,11 @@ import (
 var DB *sql.DB
 var JWTSecret string
 var MailAPIKey string
+var RedirectURL = "http://localhost:3000/api/auth/google/callback"
+var Scopes = []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"}
+var Endpoint = google.Endpoint
+var ClientID string
+var ClientSecret string
 
 func getDBCredentialsandPopulateJWTSecret() (string, error) {
 	if env := os.Getenv("ENV"); env == "DEV" {
@@ -32,10 +39,12 @@ func getDBCredentialsandPopulateJWTSecret() (string, error) {
 		sslMode := os.Getenv("SSL_MODE")
 		JWTSecret = os.Getenv("JWT_SECRET")
 		MailAPIKey = os.Getenv("MAIL_API_KEY")
+		ClientID = os.Getenv("GOOGLE_CLIENT_ID")
+		ClientSecret = os.Getenv("GOOGLE_CLIENT_SECRET")
 		str, err := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s", dbHost, dbPort, dbUser, dbPass, dbName, sslMode), nil
 		return str, nil
 	} else {
-		name := "projects/1037996227658/secrets/synapticz2pg/versions/6"
+		name := "projects/1037996227658/secrets/synapticz2pg/versions/7"
 		ctx := context.Background()
 		client, err := secretmanager.NewClient(ctx)
 		if err != nil {
@@ -51,9 +60,11 @@ func getDBCredentialsandPopulateJWTSecret() (string, error) {
 		}
 		stringVal := string(result.Payload.Data)
 		words := strings.Fields(stringVal)
-		MailAPIKey = words[0]
-		JWTSecret = words[1]
-		return strings.Join(words[2:], " "), nil
+		ClientID = words[0]
+		ClientSecret = words[1]
+		MailAPIKey = words[2]
+		JWTSecret = words[3]
+		return strings.Join(words[4:], " "), nil
 	}
 }
 func DBConnectAndPopulateDBVar() error {
@@ -69,4 +80,13 @@ func DBConnectAndPopulateDBVar() error {
 		return err
 	}
 	return nil
+}
+func GetGoogleConfig() *oauth2.Config {
+	return &oauth2.Config{
+		RedirectURL:  "https://synapticz-backend-go-1037996227658.asia-southeast1.run.app",
+		ClientID:     ClientID,
+		ClientSecret: ClientSecret,
+		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"},
+		Endpoint:     google.Endpoint,
+	}
 }
