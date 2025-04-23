@@ -365,14 +365,14 @@ func GetUserDetails(c *fiber.Ctx) error {
 
 	// Fetch user details from DB manually
 	var user models.User
-	query := `SELECT id, name, email, role, password_changed_at, verified, linkedin, facebook, instagram, profile_pic, about, deleted, created_at, updated_at ,goal
+	query := `SELECT id, name, email, role, password_changed_at, verified, linkedin, facebook, instagram, profile_pic, about, deleted, created_at, updated_at ,goal, country, country_code, mobile_number
 			  FROM users WHERE id = $1 AND deleted = false`
 
 	row := util.DB.QueryRow(query, userId)
 	err := row.Scan(
 		&user.ID, &user.Name, &user.Email, &user.Role, &user.PasswordChangedAt,
 		&user.Verified, &user.LinkedIn, &user.Facebook, &user.Instagram,
-		&user.ProfilePic, &user.About, &user.Deleted, &user.CreatedAt, &user.UpdatedAt, &user.Goal,
+		&user.ProfilePic, &user.About, &user.Deleted, &user.CreatedAt, &user.UpdatedAt, &user.Goal, &user.Country, &user.CountryCode, &user.MobileNumber,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -402,13 +402,16 @@ func EditUserProfile(c *fiber.Ctx) error {
 
 	// Define a struct for updatable fields only
 	type UpdatePayload struct {
-		Name       *string `json:"name"`
-		About      *string `json:"about"`
-		Goal       *string `json:"goal"`
-		LinkedIn   *string `json:"linkedin"`
-		Facebook   *string `json:"facebook"`
-		Instagram  *string `json:"instagram"`
-		ProfilePic *string `json:"profile_pic"`
+		Name         *string `json:"name"`
+		About        *string `json:"about"`
+		Goal         *string `json:"goal"`
+		LinkedIn     *string `json:"linkedin"`
+		Facebook     *string `json:"facebook"`
+		Instagram    *string `json:"instagram"`
+		ProfilePic   *string `json:"profile_pic"`
+		Country      *string `json:"country"`
+		CountryCode  *string `json:"country_code"`
+		MobileNumber *string `json:"mobile_number"`
 	}
 
 	var payload UpdatePayload
@@ -427,9 +430,12 @@ func EditUserProfile(c *fiber.Ctx) error {
 			linkedin = COALESCE($4, linkedin),
 			facebook = COALESCE($5, facebook),
 			instagram = COALESCE($6, instagram),
-			profile_pic = COALESCE($7, profile_pic),
+			profile_pic = COALESCE($7, country),
+			country =  COALESCE($8, profile_pic),
+			country_code =  COALESCE($9, country_code),
+			mobile_number =  COALESCE($10, mobile_number),
 			updated_at = CURRENT_TIMESTAMP
-		WHERE id = $8 AND deleted = false
+		WHERE id = $11 AND deleted = false
 		RETURNING id
 	`
 
@@ -443,6 +449,9 @@ func EditUserProfile(c *fiber.Ctx) error {
 		payload.Facebook,
 		payload.Instagram,
 		payload.ProfilePic,
+		payload.Country,
+		payload.CountryCode,
+		payload.MobileNumber,
 		user.ID,
 	).Scan(&updatedID)
 
@@ -698,44 +707,3 @@ func GetUserActivityOverview(c *fiber.Ctx) error {
 		"year_summary":   summaryMap,
 	})
 }
-
-//
-//func LoginUser(c *fiber.Ctx) error {
-//	type loginModel struct {
-//		Email    string `json:"email"`
-//		Password string `json:"password"`
-//	}
-//	loginObject := new(loginModel)
-//	err := c.BodyParser(&loginObject)
-//	if err != nil {
-//		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "error": err.Error()})
-//	}
-//
-//	// Find the user from the PostgreSQL database
-//	var userFromDB models.User
-//	if err := utils.DB.Db.Where("email = ?", loginObject.Email).First(&userFromDB).Error; err != nil {
-//		// Check if the error is because the user is not found
-//		if errors.Is(err, gorm.ErrRecordNotFound) {
-//			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "invalid credentials"})
-//		}
-//		// Handle other database errors
-//		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "error": err.Error()})
-//	}
-//
-//	// Compare the hashed password stored in the database with the provided password
-//	err = bcrypt.CompareHashAndPassword([]byte(userFromDB.Password), []byte(loginObject.Password))
-//	if err != nil {
-//		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "invalid credentials"})
-//	}
-//
-//	// Generate JWT token using user ID
-//	token, err := utils.JwtGenerate(userFromDB, strconv.Itoa(int(userFromDB.ID)))
-//	if err != nil {
-//		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "invalid credentials"})
-//	}
-//	if token == "" {
-//		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error", "message": "internal server error"})
-//	}
-//
-//	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "token": token})
-//}
