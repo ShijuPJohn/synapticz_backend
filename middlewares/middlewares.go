@@ -17,21 +17,15 @@ func NotFound(c *fiber.Ctx) error {
 
 func Protected() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// 1. Extract token
-		token := c.Get("Authorization")
+		token := c.Cookies("token")
+		claims, err := util.ParseJWT(token)
+		if err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token"})
+		}
 		if token == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"status":  "error",
 				"message": "No token provided",
-			})
-		}
-
-		// 2. Verify JWT
-		claims, err := util.VerifyJwtToken(token)
-		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"status":  "error",
-				"message": "Invalid token",
 			})
 		}
 

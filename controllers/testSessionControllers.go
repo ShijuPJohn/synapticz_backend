@@ -393,7 +393,6 @@ func UpdateTestSession(c *fiber.Ctx) error {
 			"error": "Invalid input",
 		})
 	}
-
 	user := c.Locals("user").(models.User)
 
 	var takenByID int
@@ -960,20 +959,20 @@ func GetTestHistory(c *fiber.Ctx) error {
 
 	// Result structure
 	type TestHistory struct {
-		ID           uuid.UUID `json:"id"`
-		Name         string    `json:"qSetName"`
-		Finished     bool      `json:"finished"`
-		Started      bool      `json:"started"`
-		StartedTime  time.Time `json:"startedTime"`
-		FinishedTime time.Time `json:"finishedTime"`
-		Mode         string    `json:"mode"`
-		TotalMarks   float64   `json:"totalMarks"`
-		ScoredMarks  float64   `json:"scoredMarks"`
-		Subject      string    `json:"subject"`
-		Exam         string    `json:"exam"`
-		Language     string    `json:"language"`
-		CoverImage   *string   `json:"coverImage"`
-		UpdatedTime  time.Time `json:"updatedTime"`
+		ID           uuid.UUID  `json:"id"`
+		Name         string     `json:"qSetName"`
+		Finished     bool       `json:"finished"`
+		Started      bool       `json:"started"`
+		StartedTime  time.Time  `json:"startedTime"`
+		FinishedTime *time.Time `json:"finishedTime"`
+		Mode         string     `json:"mode"`
+		TotalMarks   float64    `json:"totalMarks"`
+		ScoredMarks  float64    `json:"scoredMarks"`
+		Subject      string     `json:"subject"`
+		Exam         string     `json:"exam"`
+		Language     string     `json:"language"`
+		CoverImage   *string    `json:"coverImage"`
+		UpdatedTime  time.Time  `json:"updatedTime"`
 	}
 
 	history := []TestHistory{}

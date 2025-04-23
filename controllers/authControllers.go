@@ -13,6 +13,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/oauth2"
 	"io"
 	"math/rand"
 	"net/http"
@@ -23,6 +24,131 @@ import (
 
 func Index(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "page": "index page"})
+}
+
+func VerifyOAuth(c *fiber.Ctx) error {
+	userFromToken, ok := c.Locals("user").(models.User)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"message": "Unauthorized",
+		})
+	}
+
+	var user models.User
+	err := util.DB.QueryRow(`SELECT id, name, email, role, verified FROM users WHERE id = $1 AND deleted = false`, userFromToken.ID).
+		Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"message": "User not found",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "DB error",
+			"error":   err.Error(),
+		})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":  "success",
+		"message": "Logged in successfully",
+		"user_id": user.ID,
+	})
+}
+
+func GoogleLogin(c *fiber.Ctx) error {
+	url := util.GetGoogleConfig().AuthCodeURL("state-token", oauth2.AccessTypeOffline)
+	return c.Redirect(url)
+}
+
+func GoogleCallback(c *fiber.Ctx) error {
+	code := c.Query("code")
+	if code == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing code"})
+	}
+
+	// Step 1: Exchange code for token
+	token, err := util.GetGoogleConfig().Exchange(context.Background(), code)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Token exchange failed: " + err.Error()})
+	}
+
+	// Step 2: Fetch user info from Google
+	client := util.GetGoogleConfig().Client(context.Background(), token)
+	res, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get user info: " + err.Error()})
+	}
+	defer res.Body.Close()
+
+	var userInfo struct {
+		Email         string `json:"email"`
+		Name          string `json:"name"`
+		Picture       string `json:"picture"`
+		VerifiedEmail bool   `json:"verified_email"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&userInfo); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid response from Google"})
+	}
+
+	// Step 3: Check if user exists
+	var user models.User
+	err = util.DB.QueryRow(`SELECT id, name, email, role FROM users WHERE email = $1`, userInfo.Email).
+		Scan(&user.ID, &user.Name, &user.Email, &user.Role)
+
+	if err == sql.ErrNoRows {
+		// Create new user
+		user.Name = userInfo.Name
+		user.Email = userInfo.Email
+		user.Role = "user"
+		user.Verified = true
+		user.ProfilePic = &userInfo.Picture
+
+		err = util.DB.QueryRow(`
+			INSERT INTO users (name, email, role, verified, profile_pic)
+			VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+			user.Name, user.Email, user.Role, user.Verified, user.ProfilePic).
+			Scan(&user.ID)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create user: " + err.Error()})
+		}
+		tokenString, err := util.JwtGenerate(user, strconv.Itoa(int(user.ID)))
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+		}
+
+		// Step 5: Set HTTP-only cookie
+		c.Cookie(&fiber.Cookie{
+			Name:     "token",
+			Value:    tokenString,
+			Expires:  time.Now().Add(10 * 24 * time.Hour),
+			HTTPOnly: true,
+			Secure:   false, // true if you're using https
+			SameSite: "Lax",
+			Path:     "/",
+		})
+		return c.Redirect("http://localhost:3000/verify-oauth-newuser")
+	} else if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query user: " + err.Error()})
+	} else {
+		tokenString, err := util.JwtGenerate(user, strconv.Itoa(int(user.ID)))
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+		}
+
+		// Step 5: Set HTTP-only cookie
+		c.Cookie(&fiber.Cookie{
+			Name:     "token",
+			Value:    tokenString,
+			Expires:  time.Now().Add(10 * 24 * time.Hour),
+			HTTPOnly: true,
+			Secure:   false, // true if you're using https
+			SameSite: "Lax",
+			Path:     "/",
+		})
+		return c.Redirect("http://localhost:3000/verify-oauth-login")
+	}
+
 }
 
 func sendVerificationEmail(to, subject, htmlBody string) error {
@@ -75,14 +201,14 @@ func CreateUser(c *fiber.Ctx) error {
 		})
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(*u.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": err.Error(),
 		})
 	}
-	u.Password = string(hash)
+	*u.Password = string(hash)
 
 	// Step 1: Create user with verified = false
 	query := `INSERT INTO users 
@@ -216,12 +342,20 @@ func VerifyUserEmail(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
 	}
+	c.Cookie(&fiber.Cookie{
+		Name:     "token",
+		Value:    token,
+		Expires:  time.Now().Add(10 * 24 * time.Hour),
+		HTTPOnly: true,
+		Secure:   false, // true if you're using https
+		SameSite: "Lax",
+		Path:     "/",
+	})
 
-	// Step 6: Return token and user ID
-	return c.JSON(fiber.Map{
+	// Step 6: Redirect to frontend
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"status":  "success",
-		"message": "Email verified and user logged in",
-		"token":   token,
+		"message": "Logged in successfully",
 		"user_id": user.ID,
 	})
 }
@@ -336,7 +470,7 @@ func LoginUser(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(*user.Password), []byte(input.Password)); err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Invalid email or password",
@@ -350,11 +484,20 @@ func LoginUser(c *fiber.Ctx) error {
 			"message": "Could not generate token",
 		})
 	}
+	c.Cookie(&fiber.Cookie{
+		Name:     "token",
+		Value:    token,
+		Expires:  time.Now().Add(10 * 24 * time.Hour),
+		HTTPOnly: true,
+		Secure:   false, // true if you're using https
+		SameSite: "Lax",
+		Path:     "/",
+	})
 
+	// Step 6: Redirect to frontend
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"status":  "success",
 		"message": "Logged in successfully",
-		"token":   token,
 		"user_id": user.ID,
 	})
 }
@@ -389,7 +532,9 @@ func GetUserDetails(c *fiber.Ctx) error {
 	}
 
 	// Remove sensitive fields like password
-	user.Password = ""
+	if user.Password != nil {
+		*user.Password = ""
+	}
 
 	return c.JSON(fiber.Map{
 		"status": "success",

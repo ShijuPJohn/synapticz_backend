@@ -6,7 +6,7 @@ type User struct {
 	ID                int       `json:"id" db:"id"`
 	Name              string    `json:"name" db:"name"`
 	Email             string    `json:"email" db:"email"`
-	Password          string    `json:"password" db:"password"`
+	Password          *string   `json:"password" db:"password"`
 	Role              string    `json:"role" db:"role"`
 	PasswordChangedAt time.Time `json:"password_changed_at" db:"password_changed_at"`
 	Verified          bool      `json:"verified" db:"verified"`
@@ -19,9 +19,9 @@ type User struct {
 	CreatedAt         time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
 	IsPremium         bool      `json:"isPremium"`
-	Country           string    `json:"country"`
-	CountryCode       string    `json:"country_code"`
-	MobileNumber      string    `json:"mobile_number"`
+	Country           *string   `json:"country"`
+	CountryCode       *string   `json:"country_code"`
+	MobileNumber      *string   `json:"mobile_number"`
 	Goal              *string   `json:"goal"`
 }
 
