@@ -29,6 +29,7 @@ func main() {
 		AllowCredentials: true,
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
+		ExposeHeaders:    "Set-Cookie",
 	}))
 	app.Use(logger.New())
 
