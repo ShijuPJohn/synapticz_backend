@@ -65,12 +65,13 @@ func GoogleLogin(c *fiber.Ctx) error {
 func GoogleCallback(c *fiber.Ctx) error {
 	var baseFrontendURI string
 	var secure bool
-	if os.Getenv("ENV") == "DEV" {
-		baseFrontendURI = "http://localhost:3000"
-		secure = false
-	} else {
+	if os.Getenv("ENV") != "DEV" {
 		baseFrontendURI = "https://synapticz-frontend-1037996227658.asia-southeast1.run.app"
 		secure = true
+
+	} else {
+		baseFrontendURI = "http://localhost:3000"
+		secure = false
 	}
 	code := c.Query("code")
 	if code == "" {
