@@ -64,10 +64,13 @@ func GoogleLogin(c *fiber.Ctx) error {
 
 func GoogleCallback(c *fiber.Ctx) error {
 	var baseFrontendURI string
+	var secure bool
 	if os.Getenv("ENV") == "DEV" {
 		baseFrontendURI = "http://localhost:3000"
+		secure = false
 	} else {
 		baseFrontendURI = "https://synapticz-frontend-1037996227658.asia-southeast1.run.app"
+		secure = true
 	}
 	code := c.Query("code")
 	if code == "" {
@@ -130,7 +133,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			Value:    tokenString,
 			Expires:  time.Now().Add(10 * 24 * time.Hour),
 			HTTPOnly: true,
-			Secure:   false, // true if you're using https
+			Secure:   secure, // true if you're using https
 			SameSite: "Lax",
 			Path:     "/",
 		})
@@ -149,7 +152,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			Value:    tokenString,
 			Expires:  time.Now().Add(10 * 24 * time.Hour),
 			HTTPOnly: true,
-			Secure:   false, // true if you're using https
+			Secure:   secure, // true if you're using https
 			SameSite: "Lax",
 			Path:     "/",
 		})
