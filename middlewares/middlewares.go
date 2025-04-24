@@ -20,7 +20,7 @@ func Protected() fiber.Handler {
 		token := c.Cookies("token")
 		claims, err := util.ParseJWT(token)
 		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token"})
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token " + err.Error()})
 		}
 		if token == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
