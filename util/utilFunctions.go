@@ -84,7 +84,7 @@ func DBConnectAndPopulateDBVar() error {
 func GetGoogleConfig() *oauth2.Config {
 	var uri string
 	if os.Getenv("ENV") == "DEV" {
-		uri = "https://localhost:8080/api/auth/google-callback"
+		uri = "http://localhost:8080/api/auth/google-callback"
 	} else {
 		uri = "https://synapticz-backend-go-1037996227658.asia-southeast1.run.app/api/auth/google-callback"
 	}
