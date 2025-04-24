@@ -25,7 +25,8 @@ func main() {
 	log.Println("Tables Created")
 	app := fiber.New()
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:3000", // or your frontend domain
+		AllowOrigins: "http://localhost:3000, https://synapticz-frontend-1037996227658.asia-southeast1.run.app, https://synapticz.com", // or your frontend domain
+
 		AllowCredentials: true,
 	}))
 	app.Use(logger.New())
