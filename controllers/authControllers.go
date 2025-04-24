@@ -17,6 +17,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -62,6 +63,12 @@ func GoogleLogin(c *fiber.Ctx) error {
 }
 
 func GoogleCallback(c *fiber.Ctx) error {
+	var baseFrontendURI string
+	if os.Getenv("ENV") == "DEV" {
+		baseFrontendURI = "http://localhost:3000"
+	} else {
+		baseFrontendURI = "https://synapticz-frontend-1037996227658.asia-southeast1.run.app"
+	}
 	code := c.Query("code")
 	if code == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing code"})
@@ -127,7 +134,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			SameSite: "Lax",
 			Path:     "/",
 		})
-		return c.Redirect("https://synapticz-frontend-1037996227658.asia-southeast1.run.app/verify-oauth-newuser")
+		return c.Redirect(baseFrontendURI + "/verify-oauth-newuser")
 	} else if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query user: " + err.Error()})
 	} else {
@@ -146,7 +153,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			SameSite: "Lax",
 			Path:     "/",
 		})
-		return c.Redirect("https://synapticz-frontend-1037996227658.asia-southeast1.run.app/verify-oauth-login")
+		return c.Redirect(baseFrontendURI + "/verify-oauth-login")
 	}
 
 }
