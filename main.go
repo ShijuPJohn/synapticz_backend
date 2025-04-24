@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"log"
 	"os"
+	_ "time/tzdata"
 )
 
 func main() {
