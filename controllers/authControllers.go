@@ -135,7 +135,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			Expires:  time.Now().Add(10 * 24 * time.Hour),
 			HTTPOnly: true,
 			Secure:   secure, // true if you're using https
-			SameSite: "None",
+			SameSite: fiber.CookieSameSiteNoneMode,
 			Path:     "/",
 		})
 		return c.Redirect(baseFrontendURI + "/verify-oauth-newuser")
@@ -154,7 +154,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			Expires:  time.Now().Add(10 * 24 * time.Hour),
 			HTTPOnly: true,
 			Secure:   secure, // true if you're using https
-			SameSite: "None",
+			SameSite: fiber.CookieSameSiteNoneMode,
 			Path:     "/",
 		})
 		return c.Redirect(baseFrontendURI + "/verify-oauth-login")
