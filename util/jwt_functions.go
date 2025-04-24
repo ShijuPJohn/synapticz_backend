@@ -2,7 +2,6 @@ package util
 
 import (
 	"errors"
-	"fmt"
 	"github.com/ShijuPJohn/synapticz_backend/models"
 	"github.com/golang-jwt/jwt/v4"
 	"time"
@@ -70,11 +69,16 @@ type CustomClaims struct {
 	jwt.RegisteredClaims
 }
 
-func ParseJWT(tokenString string) (jwt.MapClaims, error) {
+func VerifyJwtToken(tokenString string) (jwt.MapClaims, error) {
+	// Remove "Bearer " prefix from the token, if present
+	if len(tokenString) > 6 && tokenString[:7] == "Bearer " {
+		tokenString = tokenString[7:]
+	}
+
+	// Parse the token
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// Check signing method
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			return nil, errors.New("unexpected signing method")
 		}
 		return []byte(JWTSecret), nil
 	})
@@ -83,10 +87,10 @@ func ParseJWT(tokenString string) (jwt.MapClaims, error) {
 		return nil, err
 	}
 
-	// Extract claims
+	// Extract claims if the token is valid
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		return claims, nil
 	}
 
-	return nil, errors.New("invalid token or claims")
+	return nil, errors.New("invalid token")
 }
