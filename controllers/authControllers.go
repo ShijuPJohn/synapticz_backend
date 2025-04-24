@@ -694,21 +694,33 @@ func GetUserActivityOverview(c *fiber.Ctx) error {
 	// Step 0: Get timezone from query param
 
 	var timezoneAliases = map[string]string{
-		"Asia/Calcutta": "Asia/Kolkata",
+		"Asia/Calcutta":       "Asia/Kolkata",      // Correct alias for historical reasons
+		"Asia/Chongqing":      "Asia/Shanghai",     // Chongqing to Shanghai
+		"Asia/Gaza":           "Asia/Jerusalem",    // Gaza to Jerusalem
+		"Asia/Kashgar":        "Asia/Urumqi",       // Kashgar to Urumqi
+		"Australia/Lord_Howe": "Australia/Sydney",  // Lord Howe to Sydney
+		"Europe/Chisinau":     "Europe/Bucharest",  // Chisinau to Bucharest
+		"Europe/Istanbul":     "Europe/Ankara",     // Istanbul to Ankara
+		"Europe/Minsk":        "Europe/Moscow",     // Minsk to Moscow
+		"Europe/Sofia":        "Europe/Bucharest",  // Sofia to Bucharest
+		"Indian/Antananarivo": "Indian/Reunion",    // Antananarivo to Reunion
+		"Pacific/Apia":        "Pacific/Fiji",      // Apia to Fiji
+		"Pacific/Fiji":        "Pacific/Tarawa",    // Fiji to Tarawa
+		"Pacific/Tarawa":      "Pacific/Fiji",      // Tarawa to Fiji
+		"US/Alaska":           "America/Anchorage", // Alaska to Anchorage
 	}
 
 	tzQuery := c.Query("tz", "UTC")
 	if realTz, ok := timezoneAliases[tzQuery]; ok {
 		tzQuery = realTz
 	}
-
+	fmt.Println("tzQuery", tzQuery)
 	tzLoc, err := time.LoadLocation(tzQuery)
 
 	now := time.Now().UTC()
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid timezone"})
 	}
-	fmt.Println("tzquery", tzQuery)
 
 	localToday := now.In(tzLoc).Truncate(24 * time.Hour)
 	sevenDaysAgo := localToday.AddDate(0, 0, -6)
