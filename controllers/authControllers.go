@@ -138,6 +138,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			SameSite: "Lax",
 			Path:     "/",
 		})
+		fmt.Println("COOKIE SET: ", c.Cookies("token"))
 		return c.Redirect(baseFrontendURI + "/verify-oauth-newuser")
 	} else if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query user: " + err.Error()})
@@ -157,6 +158,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			SameSite: "Lax",
 			Path:     "/",
 		})
+		fmt.Println("COOKIE SET: ", c.Cookies("token"))
 		return c.Redirect(baseFrontendURI + "/verify-oauth-login")
 	}
 
