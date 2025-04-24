@@ -692,14 +692,23 @@ func GetUserActivityOverview(c *fiber.Ctx) error {
 	user := c.Locals("user").(models.User)
 
 	// Step 0: Get timezone from query param
-	timezone := c.Query("tz", "UTC") // fallback to UTC
 
-	// Step 1: Calculate local "today" and last 6 days in UTC for filtering
+	var timezoneAliases = map[string]string{
+		"Asia/Calcutta": "Asia/Kolkata",
+	}
+
+	tzQuery := c.Query("tz", "UTC")
+	if realTz, ok := timezoneAliases[tzQuery]; ok {
+		tzQuery = realTz
+	}
+
+	tzLoc, err := time.LoadLocation(tzQuery)
+
 	now := time.Now().UTC()
-	tzLoc, err := time.LoadLocation(timezone)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid timezone"})
 	}
+	fmt.Println("tzquery", tzQuery)
 
 	localToday := now.In(tzLoc).Truncate(24 * time.Hour)
 	sevenDaysAgo := localToday.AddDate(0, 0, -6)
@@ -720,7 +729,7 @@ func GetUserActivityOverview(c *fiber.Ctx) error {
 		FROM user_daily_questions 
 		WHERE user_id = $1 AND answered_at >= $3
 		GROUP BY local_date
-	`, user.ID, timezone, sevenDaysAgo)
+	`, user.ID, tzQuery, sevenDaysAgo)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch questions answered"})
 	}
@@ -739,7 +748,7 @@ func GetUserActivityOverview(c *fiber.Ctx) error {
 		SELECT TO_CHAR(started_time AT TIME ZONE 'UTC' AT TIME ZONE $2, 'YYYY-MM-DD'), name 
 		FROM test_sessions 
 		WHERE taken_by_id = $1 AND started_time >= $3
-	`, user.ID, timezone, sevenDaysAgo)
+	`, user.ID, tzQuery, sevenDaysAgo)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch test sessions created"})
 	}
@@ -760,7 +769,7 @@ func GetUserActivityOverview(c *fiber.Ctx) error {
 		SELECT TO_CHAR(finished_time AT TIME ZONE 'UTC' AT TIME ZONE $2, 'YYYY-MM-DD'), name 
 		FROM test_sessions 
 		WHERE taken_by_id = $1 AND finished = true AND finished_time IS NOT NULL AND finished_time >= $3
-	`, user.ID, timezone, sevenDaysAgo)
+	`, user.ID, tzQuery, sevenDaysAgo)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch test sessions completed"})
 	}
@@ -812,7 +821,7 @@ func GetUserActivityOverview(c *fiber.Ctx) error {
   FROM all_activities
   WHERE activity_date >= $3
   GROUP BY activity_date
-`, timezone, user.ID, startOfYear)
+`, tzQuery, user.ID, startOfYear)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get yearly summary"})
 	}
