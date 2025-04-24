@@ -69,7 +69,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 	if os.Getenv("ENV") != "DEV" {
 		baseFrontendURI = "https://synapticz-frontend-1037996227658.asia-southeast1.run.app"
 		secure = true
-		domain = ".asia-southeast1.run.app"
+		domain = "synapticz-frontend-1037996227658.asia-southeast1.run.app"
 
 	} else {
 		baseFrontendURI = "http://localhost:3000"
@@ -138,7 +138,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			Expires:  time.Now().Add(10 * 24 * time.Hour),
 			HTTPOnly: true,
 			Secure:   secure, // true if you're using https
-			SameSite: fiber.CookieSameSiteNoneMode,
+			SameSite: fiber.CookieSameSiteLaxMode,
 			Path:     "/",
 			Domain:   domain,
 		})
@@ -158,7 +158,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			Expires:  time.Now().Add(10 * 24 * time.Hour),
 			HTTPOnly: true,
 			Secure:   secure, // true if you're using https
-			SameSite: fiber.CookieSameSiteNoneMode,
+			SameSite: fiber.CookieSameSiteLaxMode,
 			Path:     "/",
 			Domain:   domain,
 		})
