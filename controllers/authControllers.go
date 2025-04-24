@@ -135,10 +135,9 @@ func GoogleCallback(c *fiber.Ctx) error {
 			Expires:  time.Now().Add(10 * 24 * time.Hour),
 			HTTPOnly: true,
 			Secure:   secure, // true if you're using https
-			SameSite: "Lax",
+			SameSite: "None",
 			Path:     "/",
 		})
-		fmt.Println("COOKIE SET: ", c.Cookies("token"))
 		return c.Redirect(baseFrontendURI + "/verify-oauth-newuser")
 	} else if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query user: " + err.Error()})
@@ -155,10 +154,9 @@ func GoogleCallback(c *fiber.Ctx) error {
 			Expires:  time.Now().Add(10 * 24 * time.Hour),
 			HTTPOnly: true,
 			Secure:   secure, // true if you're using https
-			SameSite: "Lax",
+			SameSite: "None",
 			Path:     "/",
 		})
-		fmt.Println("COOKIE SET: ", c.Cookies("token"))
 		return c.Redirect(baseFrontendURI + "/verify-oauth-login")
 	}
 
