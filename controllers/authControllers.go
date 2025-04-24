@@ -67,9 +67,9 @@ func GoogleCallback(c *fiber.Ctx) error {
 	var secure bool
 	var domain string
 	if os.Getenv("ENV") != "DEV" {
-		baseFrontendURI = "https://synapticz-frontend-1037996227658.asia-southeast1.run.app"
+		baseFrontendURI = "https://synapticz.com"
 		secure = true
-		domain = "synapticz-frontend-1037996227658.asia-southeast1.run.app"
+		domain = "synapticz.com"
 
 	} else {
 		baseFrontendURI = "http://localhost:3000"
