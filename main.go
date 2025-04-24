@@ -32,16 +32,7 @@ func main() {
 		ExposeHeaders:    "Set-Cookie",
 	}))
 	app.Use(logger.New())
-	app.Use(func(c *fiber.Ctx) error {
-		// Needed for Cloud Run to properly handle cookies
-		if os.Getenv("ENV") != "DEV" {
-			c.Set("X-Frame-Options", "DENY")
-			c.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
-			c.Set("X-Content-Type-Options", "nosniff")
-			c.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		}
-		return c.Next()
-	})
+
 	routers.SetupRoutes(app)
 	var port string
 	if port = os.Getenv("PORT"); port == "" {
