@@ -2,6 +2,7 @@ package middlewares
 
 import (
 	"database/sql"
+	"fmt"
 	"github.com/ShijuPJohn/synapticz_backend/models"
 	"github.com/ShijuPJohn/synapticz_backend/util"
 	"github.com/gofiber/fiber/v2"
@@ -18,7 +19,9 @@ func NotFound(c *fiber.Ctx) error {
 func Protected() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		token := c.Cookies("token")
+		fmt.Println("Token from request", token)
 		claims, err := util.ParseJWT(token)
+		fmt.Println("Claims from token", claims)
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token " + err.Error()})
 		}
