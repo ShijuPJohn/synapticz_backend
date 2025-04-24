@@ -50,9 +50,14 @@ func VerifyOAuth(c *fiber.Ctx) error {
 			"error":   err.Error(),
 		})
 	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+	token, err := util.JwtGenerate(user, strconv.Itoa(int(user.ID)))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+	}
+	return c.JSON(fiber.Map{
 		"status":  "success",
-		"message": "Logged in successfully",
+		"message": "Email verified and user logged in",
+		"token":   token,
 		"user_id": user.ID,
 	})
 }
@@ -64,17 +69,17 @@ func GoogleLogin(c *fiber.Ctx) error {
 
 func GoogleCallback(c *fiber.Ctx) error {
 	var baseFrontendURI string
-	var secure bool
-	var domain string
+	//var secure bool
+	//var domain string
 	if os.Getenv("ENV") != "DEV" {
 		baseFrontendURI = "https://synapticz.com"
-		secure = true
-		domain = "synapticz.com" //frontend domain
+		//secure = true
+		//domain = "synapticz.com" //frontend domain
 
 	} else {
 		baseFrontendURI = "http://localhost:3000"
-		secure = false
-		domain = "localhost"
+		//secure = false
+		//domain = "localhost"
 	}
 	code := c.Query("code")
 	if code == "" {
@@ -132,17 +137,17 @@ func GoogleCallback(c *fiber.Ctx) error {
 		}
 
 		// Step 5: Set HTTP-only cookie
-		c.Cookie(&fiber.Cookie{
-			Name:     "xjwt",
-			Value:    tokenString,
-			Expires:  time.Now().Add(10 * 24 * time.Hour),
-			HTTPOnly: true,
-			Secure:   secure, // true if you're using https
-			SameSite: fiber.CookieSameSiteNoneMode,
-			Path:     "/",
-			Domain:   domain,
-		})
-		return c.Redirect(baseFrontendURI + "/verify-oauth-newuser")
+		//c.Cookie(&fiber.Cookie{
+		//	Name:     "xjwt",
+		//	Value:    tokenString,
+		//	Expires:  time.Now().Add(10 * 24 * time.Hour),
+		//	HTTPOnly: true,
+		//	Secure:   secure, // true if you're using https
+		//	SameSite: fiber.CookieSameSiteNoneMode,
+		//	Path:     "/",
+		//	Domain:   domain,
+		//})
+		return c.Redirect(baseFrontendURI + "/verify-oauth-login?" + "token=" + tokenString + "&newuser=true")
 	} else if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query user: " + err.Error()})
 	} else {
@@ -152,17 +157,17 @@ func GoogleCallback(c *fiber.Ctx) error {
 		}
 
 		// Step 5: Set HTTP-only cookie
-		c.Cookie(&fiber.Cookie{
-			Name:     "xjwt",
-			Value:    tokenString,
-			Expires:  time.Now().Add(10 * 24 * time.Hour),
-			HTTPOnly: true,
-			Secure:   secure, // true if you're using https
-			SameSite: fiber.CookieSameSiteNoneMode,
-			Path:     "/",
-			Domain:   domain,
-		})
-		return c.Redirect(baseFrontendURI + "/verify-oauth-login")
+		//c.Cookie(&fiber.Cookie{
+		//	Name:     "xjwt",
+		//	Value:    tokenString,
+		//	Expires:  time.Now().Add(10 * 24 * time.Hour),
+		//	HTTPOnly: true,
+		//	Secure:   secure, // true if you're using https
+		//	SameSite: fiber.CookieSameSiteNoneMode,
+		//	Path:     "/",
+		//	Domain:   domain,
+		//})
+		return c.Redirect(baseFrontendURI + "/verify-oauth-login?" + "token=" + tokenString + "&newuser=false")
 	}
 
 }
@@ -358,20 +363,10 @@ func VerifyUserEmail(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
 	}
-	c.Cookie(&fiber.Cookie{
-		Name:     "token",
-		Value:    token,
-		Expires:  time.Now().Add(10 * 24 * time.Hour),
-		HTTPOnly: true,
-		Secure:   false, // true if you're using https
-		SameSite: "Lax",
-		Path:     "/",
-	})
-
-	// Step 6: Redirect to frontend
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+	return c.JSON(fiber.Map{
 		"status":  "success",
-		"message": "Logged in successfully",
+		"message": "Email verified and user logged in",
+		"token":   token,
 		"user_id": user.ID,
 	})
 }
@@ -500,20 +495,10 @@ func LoginUser(c *fiber.Ctx) error {
 			"message": "Could not generate token",
 		})
 	}
-	c.Cookie(&fiber.Cookie{
-		Name:     "token",
-		Value:    token,
-		Expires:  time.Now().Add(10 * 24 * time.Hour),
-		HTTPOnly: true,
-		Secure:   false, // true if you're using https
-		SameSite: "Lax",
-		Path:     "/",
-	})
-
-	// Step 6: Redirect to frontend
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"status":  "success",
 		"message": "Logged in successfully",
+		"token":   token,
 		"user_id": user.ID,
 	})
 }

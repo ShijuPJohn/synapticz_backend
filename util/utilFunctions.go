@@ -19,9 +19,6 @@ import (
 var DB *sql.DB
 var JWTSecret string
 var MailAPIKey string
-var RedirectURL = "http://localhost:3000/api/auth/google/callback"
-var Scopes = []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"}
-var Endpoint = google.Endpoint
 var ClientID string
 var ClientSecret string
 
