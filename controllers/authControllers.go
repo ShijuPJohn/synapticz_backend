@@ -65,13 +65,16 @@ func GoogleLogin(c *fiber.Ctx) error {
 func GoogleCallback(c *fiber.Ctx) error {
 	var baseFrontendURI string
 	var secure bool
+	var domain string
 	if os.Getenv("ENV") != "DEV" {
 		baseFrontendURI = "https://synapticz-frontend-1037996227658.asia-southeast1.run.app"
 		secure = true
+		domain = ".asia-southeast1.run.app"
 
 	} else {
 		baseFrontendURI = "http://localhost:3000"
 		secure = false
+		domain = "localhost"
 	}
 	code := c.Query("code")
 	if code == "" {
@@ -137,6 +140,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			Secure:   secure, // true if you're using https
 			SameSite: fiber.CookieSameSiteNoneMode,
 			Path:     "/",
+			Domain:   domain,
 		})
 		return c.Redirect(baseFrontendURI + "/verify-oauth-newuser")
 	} else if err != nil {
@@ -156,6 +160,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 			Secure:   secure, // true if you're using https
 			SameSite: fiber.CookieSameSiteNoneMode,
 			Path:     "/",
+			Domain:   domain,
 		})
 		return c.Redirect(baseFrontendURI + "/verify-oauth-login")
 	}
