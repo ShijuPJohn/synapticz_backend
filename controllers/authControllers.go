@@ -69,7 +69,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 	if os.Getenv("ENV") != "DEV" {
 		baseFrontendURI = "https://synapticz.com"
 		secure = true
-		domain = ".asia-southeast1.run.app" //frontend domain
+		domain = "synapticz.com" //frontend domain
 
 	} else {
 		baseFrontendURI = "http://localhost:3000"
@@ -133,7 +133,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 
 		// Step 5: Set HTTP-only cookie
 		c.Cookie(&fiber.Cookie{
-			Name:     "token",
+			Name:     "xjwt",
 			Value:    tokenString,
 			Expires:  time.Now().Add(10 * 24 * time.Hour),
 			HTTPOnly: true,
@@ -153,7 +153,7 @@ func GoogleCallback(c *fiber.Ctx) error {
 
 		// Step 5: Set HTTP-only cookie
 		c.Cookie(&fiber.Cookie{
-			Name:     "token",
+			Name:     "xjwt",
 			Value:    tokenString,
 			Expires:  time.Now().Add(10 * 24 * time.Hour),
 			HTTPOnly: true,

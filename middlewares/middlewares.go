@@ -17,7 +17,7 @@ func NotFound(c *fiber.Ctx) error {
 
 func Protected() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		token := c.Cookies("token")
+		token := c.Cookies("xjwt")
 		claims, err := util.ParseJWT(token)
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token " + err.Error()})
