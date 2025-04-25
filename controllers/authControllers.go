@@ -714,7 +714,6 @@ func GetUserActivityOverview(c *fiber.Ctx) error {
 	if realTz, ok := timezoneAliases[tzQuery]; ok {
 		tzQuery = realTz
 	}
-	fmt.Println("tzQuery", tzQuery)
 	tzLoc, err := time.LoadLocation(tzQuery)
 
 	now := time.Now().UTC()

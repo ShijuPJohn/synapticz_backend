@@ -297,7 +297,6 @@ func GetQuestions(c *fiber.Ctx) error {
 }
 
 func GetQuestionByID(c *fiber.Ctx) error {
-	fmt.Println("reached the controller function")
 	db := util.DB
 
 	// Parse question ID from route

@@ -622,7 +622,7 @@ func UpdateTestSession(c *fiber.Ctx) error {
 			_, err = tx.Exec(`
 			INSERT INTO user_daily_questions (user_id, question_id, answered_correct)
 			VALUES ($1, $2, $3)
-			ON CONFLICT (user_id, question_id) DO UPDATE SET answered_correct = EXCLUDED.answered_correct
+			ON CONFLICT (user_id, question_id, answered_at) DO UPDATE SET answered_correct = EXCLUDED.answered_correct
 		`, user.ID, qid, answeredCorrect)
 
 			if err != nil {

@@ -202,7 +202,8 @@ CREATE TABLE IF NOT EXISTS user_daily_questions (
     question_id INT NOT NULL,
     answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     answered_correct BOOLEAN DEFAULT FALSE,
-    PRIMARY KEY (user_id, question_id),
+    taken_duration_seconds INT,
+    PRIMARY KEY (user_id, question_id,answered_at),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
 );
