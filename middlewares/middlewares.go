@@ -31,7 +31,7 @@ func Protected() fiber.Handler {
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"status":  "error",
-				"message": "Invalid token",
+				"message": "Invalid token " + err.Error(),
 			})
 		}
 
