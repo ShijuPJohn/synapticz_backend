@@ -435,20 +435,20 @@ func UpdateTestSession(c *fiber.Ctx) error {
 			})
 		}
 
-		var questionLimit int
-		err = tx.QueryRow(
-			`SELECT questions_limit 
-             FROM user_daily_activity 
-             WHERE user_id = $1 AND activity_date = CURRENT_DATE`, user.ID).Scan(&questionLimit)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				questionLimit = 20
-			} else {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"error": "Failed to get question limit",
-				})
-			}
-		}
+		//var questionLimit int
+		//err = tx.QueryRow(
+		//	`SELECT questions_limit
+		//     FROM user_daily_activity
+		//     WHERE user_id = $1 AND activity_date = CURRENT_DATE`, user.ID).Scan(&questionLimit)
+		//if err != nil {
+		//	if err == sql.ErrNoRows {
+		//		questionLimit = 20
+		//	} else {
+		//		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+		//			"error": "Failed to get question limit",
+		//		})
+		//	}
+		//}
 
 		newAnswers := 0
 		for _, val := range dto.QuestionAnswerData {
@@ -461,11 +461,11 @@ func UpdateTestSession(c *fiber.Ctx) error {
 			}
 		}
 
-		if answeredToday+newAnswers > questionLimit {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error": fmt.Sprintf("Daily question limit reached (%d/%d)", answeredToday, questionLimit),
-			})
-		}
+		//if answeredToday+newAnswers > questionLimit {
+		//	return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+		//		"error": fmt.Sprintf("Daily question limit reached (%d/%d)", answeredToday, questionLimit),
+		//	})
+		//}
 	}
 
 	var totalScored float64

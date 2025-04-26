@@ -212,7 +212,7 @@ func CreateUser(c *fiber.Ctx) error {
 	}
 
 	u.Role = "user"
-	u.PasswordChangedAt = time.Now()
+	u.PasswordChangedAt = time.Now().UTC()
 
 	validate := validator.New()
 	if err := validate.Struct(u); err != nil {
@@ -224,6 +224,7 @@ func CreateUser(c *fiber.Ctx) error {
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(*u.Password), bcrypt.DefaultCost)
 	if err != nil {
+		fmt.Println(err.Error())
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": err.Error(),
@@ -233,8 +234,8 @@ func CreateUser(c *fiber.Ctx) error {
 
 	// Step 1: Create user with verified = false
 	query := `INSERT INTO users 
-	(name, email, password, role, linkedin, facebook, instagram, profile_pic, about, verified)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
+	(name, email, password, role, linkedin, facebook, instagram, profile_pic, about, password_changed_at, verified)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,false)
 	RETURNING id`
 
 	err = util.DB.QueryRow(
@@ -248,6 +249,7 @@ func CreateUser(c *fiber.Ctx) error {
 		u.Instagram,
 		u.ProfilePic,
 		u.About,
+		u.PasswordChangedAt,
 	).Scan(&u.ID)
 
 	if err != nil {
