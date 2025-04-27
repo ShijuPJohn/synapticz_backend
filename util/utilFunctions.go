@@ -23,17 +23,33 @@ var ClientID string
 var ClientSecret string
 
 func getDBCredentialsandPopulateJWTSecret() (string, error) {
-	if env := os.Getenv("ENV"); env == "DEV" {
+	if env := os.Getenv("ENV"); env == "DEV" || env == "DEV_DB" {
+		var dbUser string
+		var dbPass string
+		var dbHost string
+		var dbPort string
+		var dbName string
+		var sslMode string
 		err := godotenv.Load()
 		if err != nil {
 			return "", errors.New("couldn't get environment variables")
 		}
-		dbUser := os.Getenv("DB_USER")
-		dbPass := os.Getenv("DB_PASS")
-		dbHost := os.Getenv("DB_HOST")
-		dbPort := os.Getenv("DB_PORT")
-		dbName := os.Getenv("DB_NAME")
-		sslMode := os.Getenv("SSL_MODE")
+		if os.Getenv("ENV") == "DEV_DB" {
+			dbUser = os.Getenv("LOCAL_DB_USER")
+			dbPass = os.Getenv("LOCAL_DB_PASS")
+			dbHost = os.Getenv("LOCAL_DB_HOST")
+			dbPort = os.Getenv("LOCAL_DB_PORT")
+			dbName = os.Getenv("LOCAL_DB_NAME")
+			sslMode = os.Getenv("SSL_MODE")
+		} else {
+			dbUser = os.Getenv("DB_USER")
+			dbPass = os.Getenv("DB_PASS")
+			dbHost = os.Getenv("DB_HOST")
+			dbPort = os.Getenv("DB_PORT")
+			dbName = os.Getenv("DB_NAME")
+			sslMode = os.Getenv("SSL_MODE")
+		}
+
 		JWTSecret = os.Getenv("JWT_SECRET")
 		MailAPIKey = os.Getenv("MAIL_API_KEY")
 		ClientID = os.Getenv("GOOGLE_CLIENT_ID")
