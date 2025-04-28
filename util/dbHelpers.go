@@ -110,10 +110,12 @@ func ddlStrings() []string {
 		`CREATE TABLE IF NOT EXISTS test_session_question_answers(
   test_session_id UUID REFERENCES test_sessions(id) ON DELETE CASCADE,
   question_id INT REFERENCES questions(id) ON DELETE CASCADE ,
+  order_list INT[] DEFAULT '{0,1,2,3}', 
   correct_answer_list INT[],
   selected_answer_list INT[],
   questions_total_mark FLOAT,
   questions_scored_mark FLOAT,
+  index_num INT,
   answered BOOLEAN DEFAULT FALSE,
   PRIMARY KEY (test_session_id, question_id)
 );`,

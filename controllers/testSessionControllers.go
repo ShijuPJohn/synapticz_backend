@@ -10,9 +10,19 @@ import (
 	"github.com/lib/pq"
 	"log"
 	"math/rand"
+	"slices"
 	"strconv"
 	"time"
 )
+
+func getRandomOrderList() []int {
+	list := []int{0, 1, 2, 3}
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r.Shuffle(len(list), func(i, j int) {
+		list[i], list[j] = list[j], list[i]
+	})
+	return list
+}
 
 func CreateTestSession(c *fiber.Ctx) error {
 	type CreateTestSessionInput struct {
@@ -23,9 +33,8 @@ func CreateTestSession(c *fiber.Ctx) error {
 
 	var input CreateTestSessionInput
 	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input " + err.Error()})
 	}
-
 	user := c.Locals("user").(models.User)
 
 	// Get question IDs for the set
@@ -52,14 +61,12 @@ func CreateTestSession(c *fiber.Ctx) error {
 	if len(questionIDs) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "No questions found in the set"})
 	}
-
 	if input.RandomizeQuestions {
-		rand.Seed(time.Now().UnixNano())
-		rand.Shuffle(len(questionIDs), func(i, j int) {
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		r.Shuffle(len(questionIDs), func(i, j int) {
 			questionIDs[i], questionIDs[j] = questionIDs[j], questionIDs[i]
 		})
 	}
-
 	// Get question set name
 	var qsetName string
 	err = util.DB.QueryRow("SELECT name FROM question_sets WHERE id = $1", input.QuestionSetID).Scan(&qsetName)
@@ -87,10 +94,10 @@ func CreateTestSession(c *fiber.Ctx) error {
 	// Prepare for inserting initial answer data
 	stmtAnswers, err := tx.Prepare(`
 		INSERT INTO test_session_question_answers (
-			test_session_id, question_id, correct_answer_list,
+			test_session_id, question_id, order_list,
 			selected_answer_list, questions_total_mark,
-			questions_scored_mark, answered
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			questions_scored_mark, answered,index_num
+		) VALUES ($1, $2, $3, $4, $5, $6, $7,$8)
 	`)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to prepare insert for test_session_question_answers"})
@@ -98,34 +105,30 @@ func CreateTestSession(c *fiber.Ctx) error {
 	defer stmtAnswers.Close()
 
 	for i, qid := range questionIDs {
-
+		fmt.Println("inserting question id", qid)
+		orderList := getRandomOrderList()
 		// Fetch correct_options from the questions table
-		var correctOptions64 pq.Int64Array
-		err := tx.QueryRow(`SELECT correct_options FROM questions WHERE id = $1`, qid).Scan(&correctOptions64)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Failed to fetch correct options: " + err.Error(),
-			})
-		}
+		//var correctOptions64 pq.Int64Array
+		//err := tx.QueryRow(`SELECT correct_options FROM questions WHERE id = $1`, qid).Scan(&correctOptions64)
+		//if err != nil {
+		//	return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+		//		"error": "Failed to fetch correct options: " + err.Error(),
+		//	})
+		//}
 
-		// Convert to []int
-		correctOptions := make([]int, len(correctOptions64))
-		for i, v := range correctOptions64 {
-			correctOptions[i] = int(v)
-		}
-
-		// Insert default answer data
 		_, err = stmtAnswers.Exec(
 			sessionID,
 			qid,
-			pq.Array(correctOptions),
+			//pq.Array(correctOptions64),
+			pq.Array(orderList),
 			pq.Array([]int{}), // selected_answer_list empty
 			marks[i],          // total mark per question
 			0.0,               // scored mark initially 0
 			false,             // not answered yet
+			i,
 		)
 		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to insert into test_session_question_answers"})
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to insert into test_session_question_answers : " + err.Error()})
 		}
 	}
 
@@ -210,75 +213,11 @@ func GetTestSession(c *fiber.Ctx) error {
 	// Get test statistics (only for finished tests)
 	var testStats map[string]interface{}
 	if finished {
-		// Get basic test results
-		var result struct {
-			TotalAnswered int
-			Correct       int
-			Wrong         int
-			Unanswered    int
-		}
-
-		err = util.DB.QueryRow(
-			`SELECT 
-                COUNT(CASE WHEN answered THEN 1 END) as total_answered,
-                COUNT(CASE WHEN questions_scored_mark > 0 THEN 1 END) as correct,
-                COUNT(CASE WHEN answered AND questions_scored_mark = 0 THEN 1 END) as wrong,
-                COUNT(CASE WHEN NOT answered THEN 1 END) as unanswered
-             FROM test_session_question_answers
-             WHERE test_session_id = $1`, testSessionID).Scan(
-			&result.TotalAnswered, &result.Correct, &result.Wrong, &result.Unanswered)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to calculate test stats"})
-		}
-
-		// Get historical stats
-		var history struct {
-			Attempts int
-			AvgScore float64
-			TopScore float64
-		}
-		err = util.DB.QueryRow(
-			`SELECT 
-                COUNT(*) as attempts,
-                COALESCE(AVG(scored_marks), 0) as avg_score,
-                COALESCE(MAX(scored_marks), 0) as top_score
-             FROM test_sessions 
-             WHERE question_set_id = $1 AND finished = true`, questionSetID).Scan(
-			&history.Attempts, &history.AvgScore, &history.TopScore)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch historical stats"})
-		}
-		var allScores []string
-		rows, err := util.DB.Query(
-			`SELECT scored_marks FROM test_sessions 
-             WHERE question_set_id = $1 AND finished = true 
-             ORDER BY scored_marks`, questionSetID)
+		testStats, err = GetTestStats(session.ID, questionSetID)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Failed to fetch all test scores",
+				"error": "Failed to calculate test statistics",
 			})
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var score float64
-			if err := rows.Scan(&score); err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"error": "Failed to scan test score",
-				})
-			}
-			allScores = append(allScores, fmt.Sprintf("%.2f", score))
-		}
-		testStats = map[string]interface{}{
-			"questions_answered":     result.TotalAnswered,
-			"correct_answers":        result.Correct,
-			"wrong_answers":          result.Wrong,
-			"unanswered":             result.Unanswered,
-			"percentage":             (session.ScoredMarks / session.TotalMarks) * 100,
-			"total_attempts":         history.Attempts,
-			"average_score":          history.AvgScore,
-			"top_score":              history.TopScore,
-			"all_test_takers_scores": allScores,
 		}
 	}
 
@@ -286,11 +225,10 @@ func GetTestSession(c *fiber.Ctx) error {
 	rows, err := util.DB.Query(
 		`SELECT 
             q.id, q.question, q.question_type, q.options, q.correct_options, q.explanation,
-            tsqa.selected_answer_list, tsqa.questions_total_mark, tsqa.questions_scored_mark, tsqa.answered
+            tsqa.selected_answer_list, tsqa.questions_total_mark, tsqa.questions_scored_mark, tsqa.answered, tsqa.index_num, tsqa.order_list
          FROM test_session_question_answers tsqa
          JOIN questions q ON tsqa.question_id = q.id
-         WHERE tsqa.test_session_id = $1
-         ORDER BY tsqa.question_id`, testSessionID)
+         WHERE tsqa.test_session_id = $1 ORDER BY  tsqa.index_num`, testSessionID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch questions"})
 	}
@@ -309,22 +247,39 @@ func GetTestSession(c *fiber.Ctx) error {
 			totalMark      float64
 			scoredMark     float64
 			answered       bool
+			indexNum       int
+			orderList      []int64
 		)
 
 		err := rows.Scan(
 			&id, &question, &questionType, pq.Array(&options), &correctOptions, &explanation,
-			&selectedAns, &totalMark, &scoredMark, &answered,
+			&selectedAns, &totalMark, &scoredMark, &answered, &indexNum, pq.Array(&orderList),
 		)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to scan question"})
 		}
+		reorderedOptions := make([]string, 0)
+		reorderedCorrectOptions := make([]int, 0)
+		for i, orderInd := range orderList {
+			reorderedOptions = append(reorderedOptions, options[orderInd])
+			if slices.Contains(correctOptions, orderInd) {
+				reorderedCorrectOptions = append(reorderedCorrectOptions, i)
+			}
 
+		}
+		for i, correctOption := range correctOptions {
+			if correctOption == orderList[i] {
+				reorderedCorrectOptions = append(reorderedCorrectOptions, i)
+			}
+			reorderedCorrectOptions = append(reorderedCorrectOptions)
+		}
+		fmt.Println("Orderlist | Gettestsession", orderList)
 		questions = append(questions, map[string]interface{}{
 			"id":                    id,
 			"question":              question,
 			"question_type":         questionType,
-			"options":               options,
-			"correct_options":       convertToIntSlice(correctOptions),
+			"options":               reorderedOptions,
+			"correct_options":       reorderedCorrectOptions,
 			"explanation":           explanation,
 			"selected_answer_list":  convertToIntSlice(selectedAns),
 			"questions_total_mark":  totalMark,
@@ -901,6 +856,7 @@ func FinishTestSession(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(response)
 }
+
 func GetTestHistory(c *fiber.Ctx) error {
 	db := util.DB // *sql.DB connection
 
@@ -995,4 +951,88 @@ func GetTestHistory(c *fiber.Ctx) error {
 		"count":   len(history),
 		"hasMore": len(history) == limit,
 	})
+}
+
+func GetTestStats(testSessionID string, questionSetID int) (map[string]interface{}, error) {
+	var sessionData struct {
+		ScoredMarks float64
+		TotalMarks  float64
+	}
+	err := util.DB.QueryRow(
+		`SELECT scored_marks, total_marks FROM test_sessions WHERE id = $1`, testSessionID,
+	).Scan(&sessionData.ScoredMarks, &sessionData.TotalMarks)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch session marks: %w", err)
+	}
+
+	// Get basic test results
+	var result struct {
+		TotalAnswered int
+		Correct       int
+		Wrong         int
+		Unanswered    int
+	}
+	err = util.DB.QueryRow(
+		`SELECT 
+            COUNT(CASE WHEN answered THEN 1 END) as total_answered,
+            COUNT(CASE WHEN questions_scored_mark > 0 THEN 1 END) as correct,
+            COUNT(CASE WHEN answered AND questions_scored_mark = 0 THEN 1 END) as wrong,
+            COUNT(CASE WHEN NOT answered THEN 1 END) as unanswered
+         FROM test_session_question_answers
+         WHERE test_session_id = $1`, testSessionID).Scan(
+		&result.TotalAnswered, &result.Correct, &result.Wrong, &result.Unanswered)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate test stats: %w", err)
+	}
+
+	// Get historical stats
+	var history struct {
+		Attempts int
+		AvgScore float64
+		TopScore float64
+	}
+	err = util.DB.QueryRow(
+		`SELECT 
+            COUNT(*) as attempts,
+            COALESCE(AVG(scored_marks), 0) as avg_score,
+            COALESCE(MAX(scored_marks), 0) as top_score
+         FROM test_sessions 
+         WHERE question_set_id = $1 AND finished = true`, questionSetID).Scan(
+		&history.Attempts, &history.AvgScore, &history.TopScore)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch historical stats: %w", err)
+	}
+
+	// Fetch all test scores
+	var allScores []string
+	rows, err := util.DB.Query(
+		`SELECT scored_marks FROM test_sessions 
+         WHERE question_set_id = $1 AND finished = true 
+         ORDER BY scored_marks`, questionSetID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch all test scores: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var score float64
+		if err := rows.Scan(&score); err != nil {
+			return nil, fmt.Errorf("failed to scan test score: %w", err)
+		}
+		allScores = append(allScores, fmt.Sprintf("%.2f", score))
+	}
+
+	testStats := map[string]interface{}{
+		"questions_answered":     result.TotalAnswered,
+		"correct_answers":        result.Correct,
+		"wrong_answers":          result.Wrong,
+		"unanswered":             result.Unanswered,
+		"percentage":             (sessionData.ScoredMarks / sessionData.TotalMarks) * 100,
+		"total_attempts":         history.Attempts,
+		"average_score":          history.AvgScore,
+		"top_score":              history.TopScore,
+		"all_test_takers_scores": allScores,
+	}
+
+	return testStats, nil
 }
