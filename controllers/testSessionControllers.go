@@ -105,17 +105,7 @@ func CreateTestSession(c *fiber.Ctx) error {
 	defer stmtAnswers.Close()
 
 	for i, qid := range questionIDs {
-		fmt.Println("inserting question id", qid)
 		orderList := getRandomOrderList()
-		// Fetch correct_options from the questions table
-		//var correctOptions64 pq.Int64Array
-		//err := tx.QueryRow(`SELECT correct_options FROM questions WHERE id = $1`, qid).Scan(&correctOptions64)
-		//if err != nil {
-		//	return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-		//		"error": "Failed to fetch correct options: " + err.Error(),
-		//	})
-		//}
-
 		_, err = stmtAnswers.Exec(
 			sessionID,
 			qid,
@@ -273,7 +263,6 @@ func GetTestSession(c *fiber.Ctx) error {
 			}
 			reorderedCorrectOptions = append(reorderedCorrectOptions)
 		}
-		fmt.Println("Orderlist | Gettestsession", orderList)
 		questions = append(questions, map[string]interface{}{
 			"id":                    id,
 			"question":              question,
