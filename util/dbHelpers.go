@@ -94,6 +94,10 @@ func ddlStrings() []string {
     name VARCHAR(255) NOT NULL,
     question_set_id INT NOT NULL,
     taken_by_id INT NOT NULL,
+    seconds_per_question INT,
+    time_cap_minutes INT,
+    is_timed_question BOOLEAN DEFAULT false,
+    is_time_capped BOOLEAN DEFAULT false,
     n_total_questions INT NOT NULL,
     current_question_num INT NOT NULL,
     n_correctly_answered INT DEFAULT 0,
@@ -217,7 +221,18 @@ CREATE TABLE IF NOT EXISTS user_daily_questions (
     expires_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                                                     
-);`)
+);`, `
+CREATE TABLE IF NOT EXISTS question_set_reviews (
+    id SERIAL PRIMARY KEY,
+    question_set_id INT NOT NULL,
+    user_id INT NOT NULL,
+    rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    review TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (question_set_id) REFERENCES question_sets(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+`)
 	return sqlStrings
 }
 func CreateTableIfNotExists() error {
@@ -246,6 +261,7 @@ func dropTables() []string {
 		"DROP TABLE IF EXISTS questiontags",
 		"DROP TABLE IF EXISTS test_session_question_answers",
 		"DROP TABLE IF EXISTS test_sessions",
+		"DROP TABLE IF EXISTS question_set_reviews",
 		"DROP TABLE IF EXISTS question_set_questions",
 		"DROP TABLE IF EXISTS user_questionsets_editors",
 		"DROP TABLE IF EXISTS question_sets",
