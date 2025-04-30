@@ -29,29 +29,15 @@ func CreateTestSession(c *fiber.Ctx) error {
 		QuestionSetID      int    `json:"question_set_id"`
 		Mode               string `json:"mode"` // practice, exam, timed-practice
 		RandomizeQuestions bool   `json:"randomize_questions"`
-		IsTimeCapped       bool   `json:"is_time_capped"`
-		IsTimedQuestion    bool   `json:"is_timed_question"`
 		SecondsPerQuestion int    `json:"seconds_per_question"`
-		TimeCapMinutes     int    `json:"time_cap_minutes"`
+		TimeCapSeconds     int    `json:"time_cap_seconds"`
 	}
 
 	var input CreateTestSessionInput
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input " + err.Error()})
 	}
-	fmt.Println(input)
 	user := c.Locals("user").(models.User)
-	if input.IsTimedQuestion && input.IsTimeCapped {
-		if input.SecondsPerQuestion != 0 {
-			input.IsTimeCapped = false
-			input.TimeCapMinutes = 0
-		} else if input.TimeCapMinutes != 0 {
-			input.IsTimedQuestion = false
-		} else {
-			input.IsTimeCapped = false
-			input.IsTimedQuestion = false
-		}
-	}
 	// Get question IDs for the set
 	rows, err := util.DB.Query(`
 		SELECT question_id,mark FROM question_set_questions WHERE question_set_id = $1
@@ -98,10 +84,10 @@ func CreateTestSession(c *fiber.Ctx) error {
 
 	var sessionID string
 	err = tx.QueryRow(`
-		INSERT INTO test_sessions (name, question_set_id, taken_by_id, n_total_questions, current_question_num, mode, is_timed_question, is_time_capped, seconds_per_question, time_cap_minutes)
-		VALUES ($1, $2, $3, $4, 0, $5, $6, $7, $8, $9)
+		INSERT INTO test_sessions (name, question_set_id, taken_by_id, n_total_questions, current_question_num, mode, seconds_per_question, time_cap_seconds, remaining_time_seconds)
+		VALUES ($1, $2, $3, $4, 0, $5, $6, $7, $7)
 		RETURNING id
-	`, qsetName, input.QuestionSetID, user.ID, len(questionIDs), input.Mode, input.IsTimedQuestion, input.IsTimeCapped, input.SecondsPerQuestion, input.TimeCapMinutes).Scan(&sessionID)
+	`, qsetName, input.QuestionSetID, user.ID, len(questionIDs), input.Mode, input.SecondsPerQuestion, input.TimeCapSeconds).Scan(&sessionID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create test session " + err.Error()})
 	}
@@ -185,13 +171,13 @@ func GetTestSession(c *fiber.Ctx) error {
 	err = util.DB.QueryRow(
 		`SELECT id, finished, started, name, question_set_id, taken_by_id,
                 n_total_questions, current_question_num, n_correctly_answered,
-                rank, total_marks, scored_marks, started_time, finished_time, mode,is_timed_question, is_time_capped, seconds_per_question, time_cap_minutes
+                rank, total_marks, scored_marks, started_time, finished_time, mode,seconds_per_question, time_cap_seconds, remaining_time_seconds
          FROM test_sessions
          WHERE id = $1`, testSessionID).Scan(
 		&session.ID, &session.Finished, &session.Started, &session.Name, &session.QuestionSetID,
 		&session.TakenByID, &session.NTotalQuestions, &session.CurrentQuestionNum,
 		&session.NCorrectlyAnswered, &session.Rank, &session.TotalMarks, &session.ScoredMarks,
-		&session.StartedTime, &finishedTime, &session.Mode, &session.IsTimedQuestion, &session.IsTimeCapped, &session.SecondsPerQuestion, &session.TimeCapMinutes)
+		&session.StartedTime, &finishedTime, &session.Mode, &session.SecondsPerQuestion, &session.TimeCapSeconds, &session.RemainingTime)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch test session " + err.Error()})
 	}
@@ -306,10 +292,9 @@ func GetTestSession(c *fiber.Ctx) error {
 			"scored_marks":         session.ScoredMarks,
 			"current_question_num": session.CurrentQuestionNum,
 			"rank":                 session.Rank,
-			"is_time_capped":       session.IsTimeCapped,
-			"is_timed_question":    session.IsTimedQuestion,
 			"seconds_per_question": session.SecondsPerQuestion,
-			"time_cap_minutes":     session.TimeCapMinutes,
+			"time_cap_seconds":     session.TimeCapSeconds,
+			"remaining_time":       session.RemainingTime,
 		},
 		"question_set": fiber.Map{
 			"id":          questionSetID,
@@ -341,6 +326,7 @@ func UpdateTestSession(c *fiber.Ctx) error {
 	type answerDTO struct {
 		QuestionAnswerData   map[string]interface{} `json:"question_answer_data"`
 		CurrentQuestionIndex int                    `json:"current_question_index"`
+		RemainingTime        *int                   `json:"remaining_time"`
 	}
 
 	testSessionID := c.Params("test_session_id")
@@ -541,9 +527,10 @@ func UpdateTestSession(c *fiber.Ctx) error {
 		SET current_question_num = $1,
 		    scored_marks = $2,
 		    total_marks = $3,
-		    updated_time = CURRENT_TIMESTAMP
-		WHERE id = $4
-	`, dto.CurrentQuestionIndex, totalScored, totalMarks, testSessionID)
+		    updated_time = CURRENT_TIMESTAMP,
+		    remaining_time_seconds=$4
+		WHERE id = $5
+	`, dto.CurrentQuestionIndex, totalScored, totalMarks, dto.RemainingTime, testSessionID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update test session"})
 	}
