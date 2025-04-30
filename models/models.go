@@ -137,8 +137,7 @@ type TestSession struct {
 	StartedTime        time.Time `json:"started_time" db:"started_time"`
 	FinishedTime       time.Time `json:"finished_time" db:"finished_time"`
 	Mode               string    `json:"mode" db:"mode"`
-	IsTimeCapped       bool      `json:"is_time_capped"`
-	IsTimedQuestion    bool      `json:"is_timed_question"`
 	SecondsPerQuestion int       `json:"seconds_per_question"`
-	TimeCapMinutes     int       `json:"time_cap_minutes"`
+	TimeCapSeconds     int       `json:"time_cap_seconds"`
+	RemainingTime      *int      `json:"remaining_time"`
 }
