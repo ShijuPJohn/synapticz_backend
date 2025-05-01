@@ -734,12 +734,12 @@ func FinishTestSession(c *fiber.Ctx) error {
 	// Get all questions with answers for response
 	rows, err := tx.Query(
 		`SELECT 
-            q.id, q.question, q.question_type, q.options, q.correct_options, q.explanation,
-            tsqa.selected_answer_list, tsqa.questions_total_mark, tsqa.questions_scored_mark, tsqa.answered
+	q.id, q.question, q.question_type, q.options, q.correct_options, q.explanation,
+	tsqa.selected_answer_list, tsqa.questions_total_mark, tsqa.questions_scored_mark, tsqa.answered, tsqa.index_num, tsqa.order_list
          FROM test_session_question_answers tsqa
          JOIN questions q ON tsqa.question_id = q.id
          WHERE tsqa.test_session_id = $1
-         ORDER BY tsqa.question_id`, testSessionID)
+         ORDER BY tsqa.index_num`, testSessionID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch questions"})
 	}
@@ -758,25 +758,28 @@ func FinishTestSession(c *fiber.Ctx) error {
 			totalMark      float64
 			scoredMark     float64
 			answered       bool
+			indexNum       int
+			orderList      []int64
 		)
 
 		err := rows.Scan(
 			&id, &question, &questionType, pq.Array(&options), &correctOptions, &explanation,
-			&selectedAns, &totalMark, &scoredMark, &answered,
+			&selectedAns, &totalMark, &scoredMark, &answered, &indexNum, pq.Array(&orderList),
 		)
 		if err != nil {
+			fmt.Println(err.Error())
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to scan question"})
 		}
 
-		var orderList []int64
-		err = tx.QueryRow(
-			`SELECT order_list FROM test_session_question_answers
-     WHERE test_session_id = $1 AND question_id = $2`,
-			testSessionID, id,
-		).Scan(pq.Array(&orderList))
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch order_list"})
-		}
+		//err = tx.QueryRow(
+		//	`SELECT order_list FROM test_session_question_answers
+		//WHERE test_session_id = $1 AND question_id = $2`,
+		//	testSessionID, id,
+		//).Scan(pq.Array(&orderList))
+		//if err != nil {
+		//	fmt.Println(err.Error())
+		//	return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch order_list "})
+		//}
 
 		reorderedOptions := make([]string, len(orderList))
 		reorderedCorrectOptions := []int{}
@@ -810,6 +813,7 @@ func FinishTestSession(c *fiber.Ctx) error {
          WHERE question_set_id = $1 AND finished = true 
          ORDER BY scored_marks`, questionSetID)
 	if err != nil {
+		fmt.Println(err.Error())
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch all test scores",
 		})
@@ -819,6 +823,7 @@ func FinishTestSession(c *fiber.Ctx) error {
 	for rows.Next() {
 		var score float64
 		if err := rows.Scan(&score); err != nil {
+			fmt.Println(err.Error())
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "Failed to scan test score",
 			})
@@ -840,6 +845,7 @@ func FinishTestSession(c *fiber.Ctx) error {
 	}
 
 	if err = tx.Commit(); err != nil {
+		fmt.Println(err.Error())
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to commit transaction"})
 	}
 
