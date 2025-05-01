@@ -768,12 +768,32 @@ func FinishTestSession(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to scan question"})
 		}
 
+		var orderList []int64
+		err = tx.QueryRow(
+			`SELECT order_list FROM test_session_question_answers
+     WHERE test_session_id = $1 AND question_id = $2`,
+			testSessionID, id,
+		).Scan(pq.Array(&orderList))
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch order_list"})
+		}
+
+		reorderedOptions := make([]string, len(orderList))
+		reorderedCorrectOptions := []int{}
+
+		for i, orderInd := range orderList {
+			reorderedOptions[i] = options[orderInd]
+			if slices.Contains(correctOptions, orderInd) {
+				reorderedCorrectOptions = append(reorderedCorrectOptions, i)
+			}
+		}
+
 		questions = append(questions, map[string]interface{}{
 			"id":                    id,
 			"question":              question,
 			"question_type":         questionType,
-			"options":               options,
-			"correct_options":       convertToIntSlice(correctOptions),
+			"options":               reorderedOptions,
+			"correct_options":       reorderedCorrectOptions,
 			"explanation":           explanation,
 			"selected_answer_list":  convertToIntSlice(selectedAns),
 			"questions_total_mark":  totalMark,
