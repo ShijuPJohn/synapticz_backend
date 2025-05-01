@@ -258,12 +258,12 @@ func GetTestSession(c *fiber.Ctx) error {
 			}
 
 		}
-		for i, correctOption := range correctOptions {
-			if correctOption == orderList[i] {
-				reorderedCorrectOptions = append(reorderedCorrectOptions, i)
-			}
-			reorderedCorrectOptions = append(reorderedCorrectOptions)
-		}
+		//for i, correctOption := range correctOptions {
+		//	if correctOption == orderList[i] {
+		//		reorderedCorrectOptions = append(reorderedCorrectOptions, i)
+		//	}
+		//	reorderedCorrectOptions = append(reorderedCorrectOptions)
+		//}
 		questions = append(questions, map[string]interface{}{
 			"id":                    id,
 			"question":              question,
