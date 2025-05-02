@@ -110,7 +110,6 @@ func CreateTestSession(c *fiber.Ctx) error {
 		_, err = stmtAnswers.Exec(
 			sessionID,
 			qid,
-			//pq.Array(correctOptions64),
 			pq.Array(orderList),
 			pq.Array([]int{}), // selected_answer_list empty
 			marks[i],          // total mark per question
@@ -147,45 +146,33 @@ func GetTestSession(c *fiber.Ctx) error {
 
 	user := c.Locals("user").(models.User)
 
-	// Verify ownership
-	var takenByID int
-	var finished bool
-	var questionSetID int
+	var session models.TestSession
+	var finishedTime sql.NullTime
 	err := util.DB.QueryRow(
-		`SELECT taken_by_id, finished, question_set_id 
-         FROM test_sessions 
-         WHERE id = $1`, testSessionID).Scan(&takenByID, &finished, &questionSetID)
+		`SELECT id, finished, started, name, question_set_id, taken_by_id,
+                n_total_questions, current_question_num, n_correctly_answered,
+                rank, total_marks, scored_marks, started_time, finished_time, mode,
+                seconds_per_question, time_cap_seconds, remaining_time_seconds
+         FROM test_sessions
+         WHERE id = $1`, testSessionID).Scan(
+		&session.ID, &session.Finished, &session.Started, &session.Name, &session.QuestionSetID,
+		&session.TakenByID, &session.NTotalQuestions, &session.CurrentQuestionNum,
+		&session.NCorrectlyAnswered, &session.Rank, &session.TotalMarks, &session.ScoredMarks,
+		&session.StartedTime, &finishedTime, &session.Mode, &session.SecondsPerQuestion,
+		&session.TimeCapSeconds, &session.RemainingTime)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Test session not found"})
 		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch session"})
 	}
-	if takenByID != user.ID {
+	if session.TakenByID != user.ID {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
-	}
-
-	// Get test session details
-	var session models.TestSession
-	var finishedTime sql.NullTime
-	err = util.DB.QueryRow(
-		`SELECT id, finished, started, name, question_set_id, taken_by_id,
-                n_total_questions, current_question_num, n_correctly_answered,
-                rank, total_marks, scored_marks, started_time, finished_time, mode,seconds_per_question, time_cap_seconds, remaining_time_seconds
-         FROM test_sessions
-         WHERE id = $1`, testSessionID).Scan(
-		&session.ID, &session.Finished, &session.Started, &session.Name, &session.QuestionSetID,
-		&session.TakenByID, &session.NTotalQuestions, &session.CurrentQuestionNum,
-		&session.NCorrectlyAnswered, &session.Rank, &session.TotalMarks, &session.ScoredMarks,
-		&session.StartedTime, &finishedTime, &session.Mode, &session.SecondsPerQuestion, &session.TimeCapSeconds, &session.RemainingTime)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch test session " + err.Error()})
 	}
 	if finishedTime.Valid {
 		session.FinishedTime = finishedTime.Time
 	}
 
-	// Get question set details
 	var questionSet struct {
 		Name        string
 		Description string
@@ -195,16 +182,15 @@ func GetTestSession(c *fiber.Ctx) error {
 	err = util.DB.QueryRow(
 		`SELECT name, description, cover_image, subject 
          FROM question_sets 
-         WHERE id = $1`, questionSetID).Scan(
+         WHERE id = $1`, session.QuestionSetID).Scan(
 		&questionSet.Name, &questionSet.Description, &questionSet.CoverImage, &questionSet.Subject)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch question set"})
 	}
 
-	// Get test statistics (only for finished tests)
 	var testStats map[string]interface{}
-	if finished {
-		testStats, err = GetTestStats(session.ID, questionSetID)
+	if session.Finished {
+		testStats, err = GetTestStats(session.ID, session.QuestionSetID)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "Failed to calculate test statistics",
@@ -216,16 +202,18 @@ func GetTestSession(c *fiber.Ctx) error {
 	rows, err := util.DB.Query(
 		`SELECT 
             q.id, q.question, q.question_type, q.options, q.correct_options, q.explanation,
-            tsqa.selected_answer_list, tsqa.questions_total_mark, tsqa.questions_scored_mark, tsqa.answered, tsqa.index_num, tsqa.order_list
+            tsqa.selected_answer_list, tsqa.questions_total_mark, tsqa.questions_scored_mark,
+            tsqa.answered, tsqa.index_num, tsqa.order_list
          FROM test_session_question_answers tsqa
          JOIN questions q ON tsqa.question_id = q.id
-         WHERE tsqa.test_session_id = $1 ORDER BY  tsqa.index_num`, testSessionID)
+         WHERE tsqa.test_session_id = $1 ORDER BY tsqa.index_num`, testSessionID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch questions"})
 	}
 	defer rows.Close()
 
 	var questions []map[string]interface{}
+	var questionIDs []int
 	for rows.Next() {
 		var (
 			id             int
@@ -249,6 +237,9 @@ func GetTestSession(c *fiber.Ctx) error {
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to scan question"})
 		}
+
+		questionIDs = append(questionIDs, id)
+
 		reorderedOptions := make([]string, 0)
 		reorderedCorrectOptions := make([]int, 0)
 		for i, orderInd := range orderList {
@@ -256,14 +247,8 @@ func GetTestSession(c *fiber.Ctx) error {
 			if slices.Contains(correctOptions, orderInd) {
 				reorderedCorrectOptions = append(reorderedCorrectOptions, i)
 			}
-
 		}
-		//for i, correctOption := range correctOptions {
-		//	if correctOption == orderList[i] {
-		//		reorderedCorrectOptions = append(reorderedCorrectOptions, i)
-		//	}
-		//	reorderedCorrectOptions = append(reorderedCorrectOptions)
-		//}
+
 		questions = append(questions, map[string]interface{}{
 			"id":                    id,
 			"question":              question,
@@ -277,6 +262,44 @@ func GetTestSession(c *fiber.Ctx) error {
 			"answered":              answered,
 			"is_correct":            scoredMark > 0,
 		})
+	}
+
+	// Fetch bookmarked questions for the user
+	rows, err = util.DB.Query(
+		`SELECT question_id FROM bookmarked_questions 
+         WHERE user_id = $1 AND question_id = ANY($2)`,
+		user.ID, pq.Array(questionIDs))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch bookmarks"})
+	}
+	defer rows.Close()
+
+	bookmarkedIDs := make([]int, 0)
+	for rows.Next() {
+		var qid int
+		if err := rows.Scan(&qid); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to scan bookmark"})
+		}
+		bookmarkedIDs = append(bookmarkedIDs, qid)
+	}
+
+	// Fetch saved explanations for the user
+	rows, err = util.DB.Query(
+		`SELECT question_id FROM saved_explanations 
+     WHERE user_id = $1 AND question_id = ANY($2)`,
+		user.ID, pq.Array(questionIDs))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch saved explanations"})
+	}
+	defer rows.Close()
+
+	savedExplanationIDs := make([]int, 0)
+	for rows.Next() {
+		var qid int
+		if err := rows.Scan(&qid); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to scan saved explanation"})
+		}
+		savedExplanationIDs = append(savedExplanationIDs, qid)
 	}
 
 	response := fiber.Map{
@@ -297,16 +320,18 @@ func GetTestSession(c *fiber.Ctx) error {
 			"remaining_time":       session.RemainingTime,
 		},
 		"question_set": fiber.Map{
-			"id":          questionSetID,
+			"id":          session.QuestionSetID,
 			"name":        questionSet.Name,
 			"description": questionSet.Description,
 			"cover_image": questionSet.CoverImage,
 			"subject":     questionSet.Subject,
 		},
-		"questions": questions,
+		"questions":                      questions,
+		"bookmarked_question_ids":        bookmarkedIDs,
+		"saved_explanation_question_ids": savedExplanationIDs,
 	}
 
-	if finished {
+	if session.Finished {
 		response["test_stats"] = testStats
 	}
 
