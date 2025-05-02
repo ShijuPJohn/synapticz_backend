@@ -25,8 +25,6 @@ func SetupRoutes(app *fiber.App) {
 	auth.Get("/users/overview", middlewares.Protected(), controllers.GetUserActivityOverview)
 	auth.Post("/login", controllers.LoginUser)
 
-	//
-	// Questions
 	questions := api.Group("/questions")
 	questions.Post("/", middlewares.Protected(), controllers.CreateQuestion)
 	questions.Get("/", controllers.GetQuestions)
@@ -46,5 +44,13 @@ func SetupRoutes(app *fiber.App) {
 	testSession.Get("/:test_session_id", middlewares.Protected(), controllers.GetTestSession)
 
 	bookmarks := api.Group("/bookmarks")
-	bookmarks.Post("/bm", middlewares.Protected(), controllers.CreateBookmark)
+	bookmarks.Post("/", middlewares.Protected(), controllers.CreateBookmark)
+	bookmarks.Get("/", middlewares.Protected(), controllers.GetAllBookmarks)
+	bookmarks.Delete("/:qid", middlewares.Protected(), controllers.RemoveBookmark)
+
+	explanation := api.Group("/explanations")
+	explanation.Post("/", middlewares.Protected(), controllers.SaveExplanation)
+	explanation.Get("/", middlewares.Protected(), controllers.GetAllSavedExplanations)
+	explanation.Delete("/:qid", middlewares.Protected(), controllers.RemoveExplanation)
+	explanation.Put("/:qid", middlewares.Protected(), controllers.UpdateSavedExplanation)
 }
