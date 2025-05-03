@@ -217,6 +217,7 @@ CREATE TABLE IF NOT EXISTS user_daily_questions (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     email VARCHAR(512) NOT NULL,
     code VARCHAR(6) NOT NULL,
+    purpose VARCHAR(64) DEFAULT 'email_verification',
     expires_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                                                     
