@@ -24,6 +24,9 @@ func SetupRoutes(app *fiber.App) {
 	auth.Post("/users/resend-verification", controllers.ResendVerificationCode)
 	auth.Get("/users/overview", middlewares.Protected(), controllers.GetUserActivityOverview)
 	auth.Post("/login", controllers.LoginUser)
+	auth.Post("/password-reset", controllers.SendPasswordResetCode)
+	auth.Post("/reset-code", controllers.VerifyPasswordResetCode)
+	auth.Post("/reset-password", controllers.ResetPassword)
 
 	questions := api.Group("/questions")
 	questions.Post("/", middlewares.Protected(), controllers.CreateQuestion)
