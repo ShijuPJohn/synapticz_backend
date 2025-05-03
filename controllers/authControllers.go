@@ -59,6 +59,7 @@ func VerifyOAuth(c *fiber.Ctx) error {
 		"message": "Email verified and user logged in",
 		"token":   token,
 		"user_id": user.ID,
+		"role":    user.Role,
 	})
 }
 
@@ -135,18 +136,6 @@ func GoogleCallback(c *fiber.Ctx) error {
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
 		}
-
-		// Step 5: Set HTTP-only cookie
-		//c.Cookie(&fiber.Cookie{
-		//	Name:     "xjwt",
-		//	Value:    tokenString,
-		//	Expires:  time.Now().Add(10 * 24 * time.Hour),
-		//	HTTPOnly: true,
-		//	Secure:   secure, // true if you're using https
-		//	SameSite: fiber.CookieSameSiteNoneMode,
-		//	Path:     "/",
-		//	Domain:   domain,
-		//})
 		return c.Redirect(baseFrontendURI + "/verify-oauth-login?" + "token=" + tokenString + "&newuser=true")
 	} else if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query user: " + err.Error()})
@@ -155,18 +144,6 @@ func GoogleCallback(c *fiber.Ctx) error {
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
 		}
-
-		// Step 5: Set HTTP-only cookie
-		//c.Cookie(&fiber.Cookie{
-		//	Name:     "xjwt",
-		//	Value:    tokenString,
-		//	Expires:  time.Now().Add(10 * 24 * time.Hour),
-		//	HTTPOnly: true,
-		//	Secure:   secure, // true if you're using https
-		//	SameSite: fiber.CookieSameSiteNoneMode,
-		//	Path:     "/",
-		//	Domain:   domain,
-		//})
 		return c.Redirect(baseFrontendURI + "/verify-oauth-login?" + "token=" + tokenString + "&newuser=false")
 	}
 
@@ -370,6 +347,7 @@ func VerifyUserEmail(c *fiber.Ctx) error {
 		"message": "Email verified and user logged in",
 		"token":   token,
 		"user_id": user.ID,
+		"role":    user.Role,
 	})
 }
 
@@ -505,6 +483,7 @@ func LoginUser(c *fiber.Ctx) error {
 		"message": "Logged in successfully",
 		"token":   token,
 		"user_id": user.ID,
+		"role":    user.Role,
 	})
 }
 
