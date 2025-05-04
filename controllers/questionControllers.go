@@ -319,6 +319,7 @@ func GetQuestions(c *fiber.Ctx) error {
 		}
 		questions = append(questions, q)
 	}
+	fmt.Println("questions", questions)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"status":    "success",
 		"questions": questions,
