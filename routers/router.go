@@ -39,6 +39,8 @@ func SetupRoutes(app *fiber.App) {
 	questionSet.Post("/", middlewares.Protected(), controllers.CreateQuestionSet)
 	questionSet.Get("/", controllers.GetQuestionSets)
 	questionSet.Get("/:id", controllers.GetQuestionSetByID)
+	questionSet.Delete("/:id", middlewares.Protected(), controllers.SoftDeleteQuestionSet)
+	questionSet.Put("/:id", middlewares.Protected(), controllers.UpdateQuestionSet)
 
 	testSession := api.Group("/test_session")
 	testSession.Post("/", middlewares.Protected(), controllers.CreateTestSession)

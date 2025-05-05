@@ -248,6 +248,7 @@ func GetQuestions(c *fiber.Ctx) error {
 		args = append(args, currentUserID)
 		argID++
 	}
+	conditions = append(conditions, "q.deleted=false")
 
 	if len(conditions) > 0 {
 		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
@@ -319,7 +320,6 @@ func GetQuestions(c *fiber.Ctx) error {
 		}
 		questions = append(questions, q)
 	}
-	fmt.Println("questions", questions)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"status":    "success",
 		"questions": questions,
@@ -424,7 +424,7 @@ func DeleteQuestion(c *fiber.Ctx) error {
 
 	// Check if question exists and get creator
 	var createdByID int
-	err := db.QueryRow("SELECT created_by_id FROM questions WHERE id = $1", id).Scan(&createdByID)
+	err := db.QueryRow("SELECT created_by_id FROM questions WHERE id = $1 AND deleted=false", id).Scan(&createdByID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -447,43 +447,12 @@ func DeleteQuestion(c *fiber.Ctx) error {
 		})
 	}
 
-	// Start transaction
-	tx, err := db.Begin()
+	// Perform soft delete by updating deleted_at
+	_, err = db.Exec(`UPDATE questions SET deleted = true WHERE id = $1`, id)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
-			"message": "Failed to start transaction",
-			"error":   err.Error(),
-		})
-	}
-
-	// Delete tag associations
-	_, err = tx.Exec("DELETE FROM question_questiontags WHERE question_id = $1", id)
-	if err != nil {
-		tx.Rollback()
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Failed to delete tag associations",
-			"error":   err.Error(),
-		})
-	}
-
-	// Delete the question
-	_, err = tx.Exec("DELETE FROM questions WHERE id = $1", id)
-	if err != nil {
-		tx.Rollback()
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Failed to delete question",
-			"error":   err.Error(),
-		})
-	}
-
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Failed to commit transaction",
+			"message": "Failed to soft delete question",
 			"error":   err.Error(),
 		})
 	}
@@ -493,6 +462,7 @@ func DeleteQuestion(c *fiber.Ctx) error {
 		"message": "Question deleted successfully",
 	})
 }
+
 func EditQuestion(c *fiber.Ctx) error {
 	db := util.DB
 	validate := validator.New()

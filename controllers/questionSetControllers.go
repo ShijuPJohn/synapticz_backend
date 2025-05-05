@@ -162,6 +162,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 	exam := c.Query("exam")
 	language := c.Query("language")
 	tags := c.Query("tags")
+	uid := c.Query("uid")
 	search := c.Query("search")
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "10"))
@@ -182,10 +183,27 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		LEFT JOIN question_set_questions qq ON qs.id = qq.question_set_id
 		LEFT JOIN questionsets_questionsettags qst ON qs.id = qst.questionset_id
 		LEFT JOIN questionsettags t ON qst.questionsettags_id = t.id
-		WHERE 1=1
+		WHERE 1=1 and qs.deleted<>true
 	`
 	args := []interface{}{}
 	argID := 1
+
+	// If UID is present, check user role and apply role-based filter
+	if uid != "" {
+		var userRole string
+		uidInt, _ := strconv.Atoi(uid)
+		err := util.DB.QueryRow("SELECT role FROM users WHERE id = $1", uidInt).Scan(&userRole)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Invalid user ID or user not found",
+			})
+		}
+		if userRole == "user" {
+			query += fmt.Sprintf(" AND qs.created_by_id = $%d", argID)
+			args = append(args, uid)
+			argID++
+		}
+	}
 
 	if subject != "" {
 		query += fmt.Sprintf(" AND qs.subject = $%d", argID)
@@ -379,6 +397,27 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 		}
 	}
 
+	// Get question IDs
+	questionRows, err := util.DB.Query(`
+		SELECT question_id
+		FROM question_set_questions
+		WHERE question_set_id = $1
+	`, id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to retrieve question IDs: " + err.Error(),
+		})
+	}
+	defer questionRows.Close()
+
+	var questionIDs []int
+	for questionRows.Next() {
+		var qid int
+		if err := questionRows.Scan(&qid); err == nil {
+			questionIDs = append(questionIDs, qid)
+		}
+	}
+
 	return c.JSON(fiber.Map{
 		"id":                  qs.ID,
 		"name":                qs.Name,
@@ -394,6 +433,248 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 		"created_by_name":     qs.CreatedByName,
 		"tags":                tags,
 		"test_sessions_taken": qs.TestSessionsTakenCnt,
+		"question_ids":        questionIDs,
 		"can_start_test":      true,
+	})
+}
+
+func SoftDeleteQuestionSet(c *fiber.Ctx) error {
+	// Get question set ID from path params
+	qSetID := c.Params("id")
+
+	// Get user ID from JWT
+	userFromToken := c.Locals("user").(models.User)
+	userID := userFromToken.ID
+
+	// Fetch user from DBqSetOwnerID
+	var user models.User
+	err := util.DB.QueryRow("SELECT id, role FROM users WHERE id = $1", userID).Scan(&user.ID, &user.Role)
+	if err != nil {
+		return fiber.NewError(fiber.StatusUnauthorized, "User not found")
+	}
+
+	// Fetch the question set from DB
+	var qSetOwnerID int
+	err = util.DB.QueryRow("SELECT created_by_id FROM question_sets WHERE id = $1", qSetID).Scan(&qSetOwnerID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "Question set not found")
+	}
+
+	// Authorization check
+	if user.Role != "admin" && user.Role != "owner" && qSetOwnerID != user.ID {
+		return fiber.NewError(fiber.StatusForbidden, "You are not allowed to delete this question set")
+	}
+
+	// Perform soft delete (update the 'deleted' column)
+	_, err = util.DB.Exec("UPDATE question_sets SET deleted = true WHERE id = $1", qSetID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to delete question set")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Question set deleted successfully",
+	})
+}
+
+type UpdateQuestionSetInput struct {
+	Name               string     `json:"name"`
+	Mode               string     `json:"mode"`
+	Subject            string     `json:"subject"`
+	Exam               string     `json:"exam"`
+	Language           string     `json:"language"`
+	TimeDuration       int        `json:"time_duration"`
+	Description        string     `json:"description"`
+	AssociatedResource string     `json:"associated_resource"`
+	QuestionIDs        []int      `json:"question_ids"`
+	Tags               []string   `json:"tags"`
+	Marks              *[]float64 `json:"marks"`
+	CoverImage         *string    `json:"cover_image"`
+}
+
+func UpdateQuestionSet(c *fiber.Ctx) error {
+	// Get question set ID from path params
+	qSetID := c.Params("id")
+
+	// Get user from JWT context
+	user := c.Locals("user").(models.User)
+
+	// Parse input
+	var input UpdateQuestionSetInput
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid input: " + err.Error(),
+		})
+	}
+
+	// Start transaction
+	tx, err := util.DB.Begin()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to start transaction",
+		})
+	}
+	defer tx.Rollback()
+
+	// Check if question set exists and verify ownership
+	var createdByID int
+	err = tx.QueryRow(
+		"SELECT created_by_id FROM question_sets WHERE id = $1 AND deleted <> true",
+		qSetID,
+	).Scan(&createdByID)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "Question set not found",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to verify question set: " + err.Error(),
+		})
+	}
+
+	// Authorization check - only admin, owner or creator can update
+	if user.Role != "admin" && user.Role != "owner" && createdByID != user.ID {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "You are not authorized to update this question set",
+		})
+	}
+
+	// Update question set details
+	updateQuery := `
+		UPDATE question_sets
+		SET 
+			name = $1,
+			mode = $2,
+			subject = $3,
+			exam = $4,
+			language = $5,
+			time_duration = $6,
+			description = $7,
+			associated_resource = $8,
+			cover_image = COALESCE($9, cover_image)
+		WHERE id = $10
+	`
+
+	_, err = tx.Exec(
+		updateQuery,
+		input.Name,
+		input.Mode,
+		input.Subject,
+		input.Exam,
+		input.Language,
+		input.TimeDuration,
+		input.Description,
+		input.AssociatedResource,
+		input.CoverImage,
+		qSetID,
+	)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to update question set: " + err.Error(),
+		})
+	}
+
+	// Handle questions update
+	// First, delete existing questions
+	_, err = tx.Exec("DELETE FROM question_set_questions WHERE question_set_id = $1", qSetID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to remove existing questions: " + err.Error(),
+		})
+	}
+
+	// Then add new questions
+	if len(input.QuestionIDs) > 0 {
+		markSlice := []float64{}
+		if input.Marks != nil && len(*input.Marks) == len(input.QuestionIDs) {
+			markSlice = *input.Marks
+			insertQ := `
+				INSERT INTO question_set_questions (question_set_id, question_id, mark)
+				VALUES ($1, $2, $3)
+			`
+			for i, qid := range input.QuestionIDs {
+				_, err := tx.Exec(insertQ, qSetID, qid, markSlice[i])
+				if err != nil {
+					return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+						"error": "Failed to associate question: " + err.Error(),
+					})
+				}
+			}
+		} else {
+			insertQ := `
+				INSERT INTO question_set_questions (question_set_id, question_id)
+				VALUES ($1, $2)
+			`
+			for _, qid := range input.QuestionIDs {
+				_, err := tx.Exec(insertQ, qSetID, qid)
+				if err != nil {
+					return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+						"error": "Failed to associate question: " + err.Error(),
+					})
+				}
+			}
+		}
+	}
+
+	// Handle tags update
+	// First, delete existing tags
+	_, err = tx.Exec("DELETE FROM questionsets_questionsettags WHERE questionset_id = $1", qSetID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to remove existing tags: " + err.Error(),
+		})
+	}
+
+	// Then add new tags
+	if len(input.Tags) > 0 {
+		getOrInsertTag := `
+			INSERT INTO questionsettags (name)
+			VALUES ($1)
+			ON CONFLICT (name) DO NOTHING
+			RETURNING id
+		`
+		getTagID := `
+			SELECT id FROM questionsettags WHERE name = $1
+		`
+		insertTagRelation := `
+			INSERT INTO questionsets_questionsettags (questionset_id, questionsettags_id)
+			VALUES ($1, $2)
+			ON CONFLICT DO NOTHING
+		`
+
+		for _, tag := range input.Tags {
+			var tagID int
+			// First try to insert tag and get ID
+			err = tx.QueryRow(getOrInsertTag, tag).Scan(&tagID)
+
+			if err == sql.ErrNoRows {
+				// Tag existed, so get ID
+				err = tx.QueryRow(getTagID, tag).Scan(&tagID)
+			}
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to insert/retrieve tag: " + err.Error(),
+				})
+			}
+
+			_, err = tx.Exec(insertTagRelation, qSetID, tagID)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to link tag to question set: " + err.Error(),
+				})
+			}
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Transaction commit failed: " + err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Question set updated successfully",
 	})
 }
