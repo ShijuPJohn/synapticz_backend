@@ -183,9 +183,21 @@ func GetQuestions(c *fiber.Ctx) error {
 	hoursAgo, _ := strconv.Atoi(c.Query("hours", "0"))
 	createdBy := c.Query("createdBy")
 	createdBySelf := c.Query("createdBySelf")
+	qidsParam := c.Query("qids") // New parameter for question IDs array
 
 	// Simulated current user ID (replace with actual extraction logic)
 	currentUserID := c.Locals("user").(models.User).ID
+
+	// Parse qids if provided
+	var qids []int
+	if qidsParam != "" {
+		for _, idStr := range strings.Split(qidsParam, ",") {
+			id, err := strconv.Atoi(strings.TrimSpace(idStr))
+			if err == nil {
+				qids = append(qids, id)
+			}
+		}
+	}
 
 	// Build base query
 	selectedFields := "q.id, q.question, q.subject, q.exam, q.language, q.difficulty, q.question_type, q.options, q.correct_options, q.explanation, q.created_by_id, q.created_at, q.updated_at, u.name"
@@ -209,6 +221,13 @@ func GetQuestions(c *fiber.Ctx) error {
 	var conditions []string
 	var args []interface{}
 	argID := 1
+
+	// If qids are provided, make them the primary filter
+	if len(qids) > 0 {
+		conditions = append(conditions, fmt.Sprintf("q.id = ANY($%d)", argID))
+		args = append(args, pq.Array(qids))
+		argID++
+	}
 
 	if subject != "" {
 		conditions = append(conditions, fmt.Sprintf("q.subject = $%d", argID))
@@ -262,8 +281,10 @@ func GetQuestions(c *fiber.Ctx) error {
 		baseQuery += " ORDER BY q.created_at DESC"
 	}
 
-	// Pagination
-	baseQuery += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+	// Only apply pagination if we're not fetching specific IDs
+	if len(qids) == 0 {
+		baseQuery += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+	}
 
 	// Execute query
 	rows, err := db.Query(baseQuery, args...)
@@ -320,9 +341,21 @@ func GetQuestions(c *fiber.Ctx) error {
 		}
 		questions = append(questions, q)
 	}
+
+	// If specific IDs were requested, return them all (no pagination)
+	if len(qids) > 0 {
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"status":    "success",
+			"questions": questions,
+		})
+	}
+
+	// Otherwise return paginated response
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"status":    "success",
 		"questions": questions,
+		"page":      page,
+		"limit":     limit,
 	})
 }
 
