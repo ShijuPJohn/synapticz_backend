@@ -446,7 +446,6 @@ func DeleteQuestions(c *fiber.Ctx) error {
 
 	// Get comma-separated question IDs from query parameter
 	idsParam := c.Query("ids")
-	fmt.Println("idparams", idsParam)
 	if idsParam == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
@@ -456,7 +455,6 @@ func DeleteQuestions(c *fiber.Ctx) error {
 
 	// Split comma-separated string into individual IDs
 	idStrings := strings.Split(idsParam, ",")
-	fmt.Println("ids", idStrings)
 	if len(idStrings) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
@@ -526,6 +524,14 @@ func DeleteQuestions(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Failed to delete questions",
+			"error":   err.Error(),
+		})
+	}
+	result, err = db.Exec("DELETE from question_set_questions where question_id= ANY($1)", pq.Array(deletableIDs))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Failed to delete associations with question_sets",
 			"error":   err.Error(),
 		})
 	}
