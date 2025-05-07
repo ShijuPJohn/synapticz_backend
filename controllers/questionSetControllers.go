@@ -24,6 +24,7 @@ type CreateQuestionSetInput struct {
 	QuestionIDs        []int      `json:"question_ids"`
 	Tags               []string   `json:"tags"`
 	Marks              *[]float64 `json:"marks"`
+	CoverImage         *string    `json:"cover_image"`
 }
 
 func CreateQuestionSet(c *fiber.Ctx) error {
@@ -49,9 +50,9 @@ func CreateQuestionSet(c *fiber.Ctx) error {
 	insertQS := `
 		INSERT INTO question_sets (
 			name, mode, subject, exam, language,
-			time_duration, description, associated_resource, created_by_id, created_at
+			time_duration, description, associated_resource, created_by_id, created_at, cover_image
 		)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, $11)
 		RETURNING id
 	`
 	err = tx.QueryRow(
@@ -66,6 +67,7 @@ func CreateQuestionSet(c *fiber.Ctx) error {
 		input.AssociatedResource,
 		user.ID,
 		time.Now(),
+		input.CoverImage,
 	).Scan(&questionSetID)
 
 	if err != nil {
