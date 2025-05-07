@@ -172,18 +172,20 @@ func GetQuestionSets(c *fiber.Ctx) error {
 	}
 	offset := (page - 1) * limit
 
+	// First query to get the basic question set info
 	query := `
-		SELECT DISTINCT 
+		SELECT 
 			qs.id, qs.name, qs.mode, qs.subject, qs.exam, qs.language,
 			qs.time_duration, qs.description, qs.associated_resource,
 			qs.created_by_id, u.name, qs.cover_image, qs.created_at,
-			COUNT(qq.question_id) AS total_questions
+			(
+				SELECT COUNT(*) 
+				FROM question_set_questions qq 
+				WHERE qq.question_set_id = qs.id
+			) AS total_questions
 		FROM question_sets qs
 		JOIN users u ON qs.created_by_id = u.id
-		LEFT JOIN question_set_questions qq ON qs.id = qq.question_set_id
-		LEFT JOIN questionsets_questionsettags qst ON qs.id = qst.questionset_id
-		LEFT JOIN questionsettags t ON qst.questionsettags_id = t.id
-		WHERE 1=1 and qs.deleted<>true
+		WHERE qs.deleted <> true
 	`
 	args := []interface{}{}
 	argID := 1
@@ -256,12 +258,6 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		argID++
 	}
 
-	query += `
-		GROUP BY 
-			qs.id, qs.name, qs.mode, qs.subject, qs.exam, qs.language,
-			qs.time_duration, qs.description, qs.associated_resource,
-			qs.created_by_id, u.name, qs.cover_image, qs.created_at
-	`
 	query += fmt.Sprintf(" ORDER BY qs.created_at DESC LIMIT $%d OFFSET $%d", argID, argID+1)
 	args = append(args, limit, offset)
 
@@ -283,11 +279,12 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		TimeDuration       int       `json:"time_duration"`
 		Description        string    `json:"description"`
 		AssociatedResource string    `json:"associated_resource"`
-		CreatedByID        string    `json:"created_by_id"`
+		CreatedByID        int       `json:"created_by_id"`
 		CreatedByName      string    `json:"created_by_name"`
 		CoverImage         string    `json:"coverImage"`
 		CreatedAt          time.Time `json:"created_at"`
 		TotalQuestions     int       `json:"total_questions"`
+		QuestionIDs        []int     `json:"question_ids"`
 	}
 
 	var results []QuestionSetResponse
@@ -323,6 +320,33 @@ func GetQuestionSets(c *fiber.Ctx) error {
 			qs.CoverImage = coverImage.String
 		}
 
+		// Second query to get question IDs for this question set
+		questionIDsQuery := `
+			SELECT question_id 
+			FROM question_set_questions 
+			WHERE question_set_id = $1
+			ORDER BY question_id
+		`
+		questionRows, err := util.DB.Query(questionIDsQuery, qs.ID)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to fetch question IDs: " + err.Error(),
+			})
+		}
+		defer questionRows.Close()
+
+		var questionIDs []int
+		for questionRows.Next() {
+			var questionID int
+			if err := questionRows.Scan(&questionID); err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to scan question ID: " + err.Error(),
+				})
+			}
+			questionIDs = append(questionIDs, questionID)
+		}
+
+		qs.QuestionIDs = questionIDs
 		results = append(results, qs)
 	}
 
