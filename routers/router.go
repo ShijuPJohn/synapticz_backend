@@ -32,7 +32,7 @@ func SetupRoutes(app *fiber.App) {
 	questions.Post("/", middlewares.Protected(), controllers.CreateQuestion)
 	questions.Get("/", middlewares.Protected(), controllers.GetQuestions)
 	questions.Get("/:id", middlewares.Protected(), controllers.GetQuestionByID)
-	questions.Delete("/:id", middlewares.Protected(), controllers.DeleteQuestion)
+	questions.Delete("/", middlewares.Protected(), controllers.DeleteQuestions)
 	questions.Put("/:id", middlewares.Protected(), controllers.EditQuestion)
 
 	questionSet := api.Group("/questionsets")

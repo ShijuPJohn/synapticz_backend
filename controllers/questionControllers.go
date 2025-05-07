@@ -441,58 +441,101 @@ func GetQuestionByID(c *fiber.Ctx) error {
 	})
 }
 
-func DeleteQuestion(c *fiber.Ctx) error {
+func DeleteQuestions(c *fiber.Ctx) error {
 	db := util.DB
 
-	// Get question ID from URL
-	id := c.Params("id")
-	if id == "" {
+	// Get comma-separated question IDs from query parameter
+	idsParam := c.Query("ids")
+	fmt.Println("idparams", idsParam)
+	if idsParam == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
-			"message": "Question ID is required",
+			"message": "Question IDs are required as comma-separated list",
+		})
+	}
+
+	// Split comma-separated string into individual IDs
+	idStrings := strings.Split(idsParam, ",")
+	fmt.Println("ids", idStrings)
+	if len(idStrings) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "No valid question IDs provided",
 		})
 	}
 
 	user := c.Locals("user").(models.User)
 
-	// Check if question exists and get creator
-	var createdByID int
-	err := db.QueryRow("SELECT created_by_id FROM questions WHERE id = $1 AND deleted=false", id).Scan(&createdByID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+	// Convert string IDs to integers and validate
+	var ids []int
+	for _, idStr := range idStrings {
+		id, err := strconv.Atoi(strings.TrimSpace(idStr))
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"status":  "error",
-				"message": "Question not found",
+				"message": "Invalid question ID format",
+				"error":   err.Error(),
 			})
 		}
+		ids = append(ids, id)
+	}
+
+	// Check if user is admin or owner
+	isAdminOrOwner := user.Role == "admin" || user.Role == "owner" // Adjust based on your role system
+
+	// Build the WHERE condition based on user role
+	whereCondition := "deleted = false AND id = ANY($1)"
+	if !isAdminOrOwner {
+		whereCondition += fmt.Sprintf(" AND created_by_id = %d", user.ID)
+	}
+
+	// Get the IDs of questions that can actually be deleted
+	var deletableIDs []int
+	rows, err := db.Query(fmt.Sprintf("SELECT id FROM questions WHERE %s", whereCondition), pq.Array(ids))
+	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Database error",
 			"error":   err.Error(),
 		})
 	}
+	defer rows.Close()
 
-	// Authorization check
-	if user.ID != createdByID && user.Role != "admin" && user.Role != "owner" {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to scan question IDs",
+				"error":   err.Error(),
+			})
+		}
+		deletableIDs = append(deletableIDs, id)
+	}
+
+	if len(deletableIDs) == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "error",
-			"message": "You are not authorized to delete this question",
+			"message": "No deletable questions found (either they don't exist or you lack permission)",
 		})
 	}
 
-	// Perform soft delete by updating deleted_at
-	_, err = db.Exec(`UPDATE questions SET deleted = true WHERE id = $1`, id)
+	// Perform the deletion (soft delete) only on allowed questions
+	result, err := db.Exec("UPDATE questions SET deleted = true WHERE id = ANY($1)", pq.Array(deletableIDs))
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
-			"message": "Failed to soft delete question",
+			"message": "Failed to delete questions",
 			"error":   err.Error(),
 		})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"status":  "success",
-		"message": "Question deleted successfully",
+	rowsAffected, _ := result.RowsAffected()
+
+	return c.JSON(fiber.Map{
+		"status":      "success",
+		"message":     fmt.Sprintf("Successfully deleted %d out of %d requested questions", rowsAffected, len(ids)),
+		"deleted_ids": deletableIDs, // Optional: Return which IDs were deleted
 	})
 }
 
