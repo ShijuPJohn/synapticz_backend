@@ -9,6 +9,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/lib/pq"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -183,9 +184,9 @@ func GetQuestions(c *fiber.Ctx) error {
 	hoursAgo, _ := strconv.Atoi(c.Query("hours", "0"))
 	createdBy := c.Query("createdBy")
 	createdBySelf := c.Query("createdBySelf")
-	qidsParam := c.Query("qids") // New parameter for question IDs array
+	qidsParam := c.Query("qids")
 
-	// Simulated current user ID (replace with actual extraction logic)
+	// Simulated current user ID
 	currentUserID := c.Locals("user").(models.User).ID
 
 	// Parse qids if provided
@@ -211,6 +212,15 @@ func GetQuestions(c *fiber.Ctx) error {
 	baseQuery := `
 		SELECT ` + selectedFields + `,
 			COALESCE(json_agg(DISTINCT qt.name) FILTER (WHERE qt.name IS NOT NULL), '[]') AS tags
+		FROM questions q
+		LEFT JOIN question_questiontags qqt ON q.id = qqt.question_id
+		LEFT JOIN questiontags qt ON qt.id = qqt.questiontags_id
+		LEFT JOIN users u ON u.id = q.created_by_id
+	`
+
+	// Count query for total items
+	countQuery := `
+		SELECT COUNT(DISTINCT q.id)
 		FROM questions q
 		LEFT JOIN question_questiontags qqt ON q.id = qqt.question_id
 		LEFT JOIN questiontags qt ON qt.id = qqt.questiontags_id
@@ -269,25 +279,39 @@ func GetQuestions(c *fiber.Ctx) error {
 	}
 	conditions = append(conditions, "q.deleted=false")
 
+	whereClause := ""
 	if len(conditions) > 0 {
-		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
+		whereClause = " WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	// Grouping and sorting
-	baseQuery += " GROUP BY q.id, u.name"
+	// Get total count (only if not fetching specific IDs)
+	var totalCount int
+	if len(qids) == 0 {
+		err := db.QueryRow(countQuery+whereClause, args...).Scan(&totalCount)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Failed to count questions",
+				"error":   err.Error(),
+			})
+		}
+	}
+
+	// Build final query
+	finalQuery := baseQuery + whereClause + " GROUP BY q.id, u.name"
 	if sort == "asc" {
-		baseQuery += " ORDER BY q.created_at ASC"
+		finalQuery += " ORDER BY q.created_at ASC"
 	} else {
-		baseQuery += " ORDER BY q.created_at DESC"
+		finalQuery += " ORDER BY q.created_at DESC"
 	}
 
 	// Only apply pagination if we're not fetching specific IDs
 	if len(qids) == 0 {
-		baseQuery += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+		finalQuery += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
 	}
 
 	// Execute query
-	rows, err := db.Query(baseQuery, args...)
+	rows, err := db.Query(finalQuery, args...)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
@@ -342,20 +366,41 @@ func GetQuestions(c *fiber.Ctx) error {
 		questions = append(questions, q)
 	}
 
+	// Calculate pagination info
+	var pagination fiber.Map
+	if len(qids) == 0 {
+		totalPages := int(math.Ceil(float64(totalCount) / float64(limit)))
+		pagination = fiber.Map{
+			"total":       totalCount,
+			"total_pages": totalPages,
+			"per_page":    limit,
+			"current":     page,
+			"next":        nil,
+			"prev":        nil,
+		}
+
+		if page < totalPages {
+			pagination["next"] = page + 1
+		}
+		if page > 1 {
+			pagination["prev"] = page - 1
+		}
+	}
+
 	// If specific IDs were requested, return them all (no pagination)
 	if len(qids) > 0 {
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{
-			"status":    "success",
-			"questions": questions,
+			"status":     "success",
+			"questions":  questions,
+			"pagination": nil,
 		})
 	}
 
 	// Otherwise return paginated response
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"status":    "success",
-		"questions": questions,
-		"page":      page,
-		"limit":     limit,
+		"status":     "success",
+		"questions":  questions,
+		"pagination": pagination,
 	})
 }
 
