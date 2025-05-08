@@ -7,6 +7,7 @@ import (
 	"github.com/ShijuPJohn/synapticz_backend/util"
 	"github.com/gofiber/fiber/v2"
 	"github.com/lib/pq"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -174,8 +175,8 @@ func GetQuestionSets(c *fiber.Ctx) error {
 	}
 	offset := (page - 1) * limit
 
-	// First query to get the basic question set info
-	query := `
+	// Base query for fetching question sets
+	baseQuery := `
 		SELECT 
 			qs.id, qs.name, qs.mode, qs.subject, qs.exam, qs.language,
 			qs.time_duration, qs.description, qs.associated_resource,
@@ -189,6 +190,15 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		JOIN users u ON qs.created_by_id = u.id
 		WHERE qs.deleted <> true
 	`
+
+	// Count query for total items
+	countQuery := `
+		SELECT COUNT(DISTINCT qs.id)
+		FROM question_sets qs
+		JOIN users u ON qs.created_by_id = u.id
+		WHERE qs.deleted <> true
+	`
+
 	args := []interface{}{}
 	argID := 1
 
@@ -203,24 +213,29 @@ func GetQuestionSets(c *fiber.Ctx) error {
 			})
 		}
 		if userRole == "user" {
-			query += fmt.Sprintf(" AND qs.created_by_id = $%d", argID)
+			baseQuery += fmt.Sprintf(" AND qs.created_by_id = $%d", argID)
+			countQuery += fmt.Sprintf(" AND qs.created_by_id = $%d", argID)
 			args = append(args, uid)
 			argID++
 		}
 	}
 
+	// Apply filters to both queries
 	if subject != "" {
-		query += fmt.Sprintf(" AND qs.subject = $%d", argID)
+		baseQuery += fmt.Sprintf(" AND qs.subject = $%d", argID)
+		countQuery += fmt.Sprintf(" AND qs.subject = $%d", argID)
 		args = append(args, subject)
 		argID++
 	}
 	if exam != "" {
-		query += fmt.Sprintf(" AND qs.exam = $%d", argID)
+		baseQuery += fmt.Sprintf(" AND qs.exam = $%d", argID)
+		countQuery += fmt.Sprintf(" AND qs.exam = $%d", argID)
 		args = append(args, exam)
 		argID++
 	}
 	if language != "" {
-		query += fmt.Sprintf(" AND qs.language = $%d", argID)
+		baseQuery += fmt.Sprintf(" AND qs.language = $%d", argID)
+		countQuery += fmt.Sprintf(" AND qs.language = $%d", argID)
 		args = append(args, language)
 		argID++
 	}
@@ -228,7 +243,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		tagList := strings.Split(tags, ",")
 		tagCount := len(tagList)
 
-		query += fmt.Sprintf(`
+		tagFilter := fmt.Sprintf(`
 			AND qs.id IN (
 				SELECT questionset_id
 				FROM questionsets_questionsettags qst
@@ -239,12 +254,14 @@ func GetQuestionSets(c *fiber.Ctx) error {
 			)
 		`, argID, tagCount)
 
+		baseQuery += tagFilter
+		countQuery += tagFilter
 		args = append(args, pq.Array(tagList))
 		argID++
 	}
 	if search != "" {
 		searchTerm := "%" + search + "%"
-		query += fmt.Sprintf(`
+		searchFilter := fmt.Sprintf(`
 			AND (
 				LOWER(qs.name) ILIKE $%d OR
 				LOWER(qs.subject) ILIKE $%d OR
@@ -256,14 +273,29 @@ func GetQuestionSets(c *fiber.Ctx) error {
 				)
 			)
 		`, argID, argID, argID, argID)
+
+		baseQuery += searchFilter
+		countQuery += searchFilter
 		args = append(args, strings.ToLower(searchTerm))
 		argID++
 	}
 
-	query += fmt.Sprintf(" ORDER BY qs.created_at DESC LIMIT $%d OFFSET $%d", argID, argID+1)
+	// Get total count
+	var totalCount int
+	err := util.DB.QueryRow(countQuery, args...).Scan(&totalCount)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to count question sets: " + err.Error(),
+		})
+	}
+
+	// Add sorting and pagination to the base query
+	baseQuery += " ORDER BY qs.created_at DESC"
+	baseQuery += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argID, argID+1)
 	args = append(args, limit, offset)
 
-	rows, err := util.DB.Query(query, args...)
+	// Execute main query
+	rows, err := util.DB.Query(baseQuery, args...)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch question sets: " + err.Error(),
@@ -290,6 +322,9 @@ func GetQuestionSets(c *fiber.Ctx) error {
 	}
 
 	var results []QuestionSetResponse
+
+	// Pre-allocate slice with capacity for the expected number of results
+	results = make([]QuestionSetResponse, 0, limit)
 
 	for rows.Next() {
 		var qs QuestionSetResponse
@@ -322,14 +357,25 @@ func GetQuestionSets(c *fiber.Ctx) error {
 			qs.CoverImage = coverImage.String
 		}
 
-		// Second query to get question IDs for this question set
+		// Get question IDs in a single batch for all sets (optimization)
+		// We'll do this after collecting all set IDs to reduce DB queries
+		results = append(results, qs)
+	}
+
+	// Batch fetch question IDs for all sets
+	if len(results) > 0 {
+		setIDs := make([]int, len(results))
+		for i, qs := range results {
+			setIDs[i] = qs.ID
+		}
+
 		questionIDsQuery := `
-			SELECT question_id 
+			SELECT question_set_id, question_id 
 			FROM question_set_questions 
-			WHERE question_set_id = $1
-			ORDER BY question_id
+			WHERE question_set_id = ANY($1)
+			ORDER BY question_set_id, question_id
 		`
-		questionRows, err := util.DB.Query(questionIDsQuery, qs.ID)
+		questionRows, err := util.DB.Query(questionIDsQuery, pq.Array(setIDs))
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "Failed to fetch question IDs: " + err.Error(),
@@ -337,22 +383,46 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		}
 		defer questionRows.Close()
 
-		var questionIDs []int
+		// Create a map of set ID to question IDs
+		questionMap := make(map[int][]int)
 		for questionRows.Next() {
-			var questionID int
-			if err := questionRows.Scan(&questionID); err != nil {
+			var setID, questionID int
+			if err := questionRows.Scan(&setID, &questionID); err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"error": "Failed to scan question ID: " + err.Error(),
 				})
 			}
-			questionIDs = append(questionIDs, questionID)
+			questionMap[setID] = append(questionMap[setID], questionID)
 		}
 
-		qs.QuestionIDs = questionIDs
-		results = append(results, qs)
+		// Assign question IDs to each set
+		for i := range results {
+			results[i].QuestionIDs = questionMap[results[i].ID]
+		}
 	}
 
-	return c.Status(fiber.StatusOK).JSON(results)
+	// Calculate pagination info
+	totalPages := int(math.Ceil(float64(totalCount) / float64(limit)))
+	pagination := fiber.Map{
+		"total":       totalCount,
+		"total_pages": totalPages,
+		"per_page":    limit,
+		"current":     page,
+		"next":        nil,
+		"prev":        nil,
+	}
+
+	if page < totalPages {
+		pagination["next"] = page + 1
+	}
+	if page > 1 {
+		pagination["prev"] = page - 1
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"data":       results,
+		"pagination": pagination,
+	})
 }
 
 func GetQuestionSetByID(c *fiber.Ctx) error {
