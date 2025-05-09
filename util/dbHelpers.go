@@ -28,11 +28,12 @@ func ddlStrings() []string {
     premium_expiry TIMESTAMP,
     about TEXT,
     goal TEXT,
+    profile_visibility VARCHAR(20) CHECK (profile_visibility IN ('public', 'private')) DEFAULT 'public',
+    allow_mentor_view BOOLEAN DEFAULT false,
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-)`,
-		`CREATE TABLE IF NOT EXISTS  questions (
+)`, `CREATE TABLE IF NOT EXISTS  questions (
     id SERIAL PRIMARY KEY,
     question TEXT NOT NULL,
     subject VARCHAR(255) NOT NULL,
@@ -234,7 +235,40 @@ CREATE TABLE IF NOT EXISTS question_set_reviews (
     FOREIGN KEY (question_set_id) REFERENCES question_sets(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-`)
+`, `
+	CREATE TABLE IF NOT EXISTS user_connections (
+		id SERIAL PRIMARY KEY,
+		requester_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		target_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		connection_type VARCHAR(20) NOT NULL
+	CHECK (connection_type IN ('friend', 'mentor-mentee', 'follower')),
+	status VARCHAR(20) NOT NULL
+	CHECK (status IN ('pending', 'accepted', 'rejected'))
+	DEFAULT 'pending',
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		mentee_activity_access BOOLEAN DEFAULT false, -- Only for mentor-mentee
+		UNIQUE (requester_id, target_id, connection_type)
+);
+	`, `
+	CREATE TABLE IF NOT EXISTS shoutouts (
+		id SERIAL PRIMARY KEY,
+		user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		content TEXT NOT NULL,
+		visibility VARCHAR(20) NOT NULL
+	CHECK (visibility IN ('all-connections', 'friends-only', 'mentors-only', 'mentees-only'))
+	DEFAULT 'all-connections',
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	`, `
+	CREATE TABLE IF NOT EXISTS shared_mentee_activity (
+		mentor_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		mentee_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		test_session_id UUID NOT NULL REFERENCES test_sessions(id) ON DELETE CASCADE,
+		shared_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (mentor_id, mentee_id, test_session_id)
+	);
+	`)
 	return sqlStrings
 }
 func CreateTableIfNotExists() error {
@@ -269,6 +303,9 @@ func dropTables() []string {
 		"DROP TABLE IF EXISTS question_sets",
 		"DROP TABLE IF EXISTS user_questions_editors",
 		"DROP TABLE IF EXISTS questions",
+		"DROP TABLE IF EXISTS user_connections",
+		"DROP TABLE IF EXISTS shoutouts",
+		"DROP TABLE IF EXISTS shared_mentee_activity",
 		"DROP TABLE IF EXISTS users",
 	}
 }

@@ -167,6 +167,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 	tags := c.Query("tags")
 	uid := c.Query("uid")
 	search := c.Query("search")
+	resource := c.Query("resource")
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "10"))
 
@@ -239,6 +240,12 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		args = append(args, language)
 		argID++
 	}
+	if resource != "" {
+		baseQuery += fmt.Sprintf(" AND qs.associated_resource = $%d", argID)
+		countQuery += fmt.Sprintf(" AND qs.associated_resource = $%d", argID)
+		args = append(args, resource)
+		argID++
+	}
 	if tags != "" {
 		tagList := strings.Split(tags, ",")
 		tagCount := len(tagList)
@@ -262,17 +269,18 @@ func GetQuestionSets(c *fiber.Ctx) error {
 	if search != "" {
 		searchTerm := "%" + search + "%"
 		searchFilter := fmt.Sprintf(`
-			AND (
-				LOWER(qs.name) ILIKE $%d OR
-				LOWER(qs.subject) ILIKE $%d OR
-				LOWER(qs.description) ILIKE $%d OR
-				EXISTS (
-					SELECT 1 FROM questionsets_questionsettags qst2
-					JOIN questionsettags t2 ON qst2.questionsettags_id = t2.id
-					WHERE qst2.questionset_id = qs.id AND LOWER(t2.name) ILIKE $%d
-				)
-			)
-		`, argID, argID, argID, argID)
+        AND (
+            LOWER(qs.name) ILIKE $%d OR
+            LOWER(qs.subject) ILIKE $%d OR
+            LOWER(qs.description) ILIKE $%d OR
+            LOWER(qs.associated_resource) ILIKE $%d OR
+            EXISTS (
+                SELECT 1 FROM questionsets_questionsettags qst2
+                JOIN questionsettags t2 ON qst2.questionsettags_id = t2.id
+                WHERE qst2.questionset_id = qs.id AND LOWER(t2.name) ILIKE $%d
+            )
+        )
+    `, argID, argID, argID, argID, argID)
 
 		baseQuery += searchFilter
 		countQuery += searchFilter
