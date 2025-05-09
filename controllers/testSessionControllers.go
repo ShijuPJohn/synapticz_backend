@@ -206,7 +206,7 @@ func GetTestSession(c *fiber.Ctx) error {
             tsqa.answered, tsqa.index_num, tsqa.order_list
          FROM test_session_question_answers tsqa
          JOIN questions q ON tsqa.question_id = q.id
-         WHERE tsqa.test_session_id = $1 ORDER BY tsqa.index_num`, testSessionID)
+         WHERE tsqa.test_session_id = $1 AND q.deleted<>true ORDER BY tsqa.index_num`, testSessionID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch questions"})
 	}
