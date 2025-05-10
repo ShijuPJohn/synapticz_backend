@@ -59,4 +59,9 @@ func SetupRoutes(app *fiber.App) {
 	explanation.Get("/", middlewares.Protected(), controllers.GetAllSavedExplanations)
 	explanation.Delete("/:qid", middlewares.Protected(), controllers.RemoveExplanation)
 	explanation.Put("/:qid", middlewares.Protected(), controllers.UpdateSavedExplanation)
+
+	aigen := api.Group("/ai-gen")
+	aigen.Post("/res", middlewares.Protected(), controllers.SearchResourceURL)
+	aigen.Post("/quiz", middlewares.Protected(), controllers.GenerateQuizFromYTVideo)
+
 }
