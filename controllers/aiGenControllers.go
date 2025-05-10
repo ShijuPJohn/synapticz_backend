@@ -180,9 +180,9 @@ func GenerateQuizFromYTVideo(c *fiber.Ctx) error {
 	var quizFormat string = `{
   "name": "title",
   "mode": "practice",
-  "subject": "physics, chemistry",
+  "subject": "subject",
   "exam": "na",
-  "language": "english",
+  "language": "language",
   "time_duration": 40,
   "description": a description of what it is about,
   "associated_resource": "the input url",
