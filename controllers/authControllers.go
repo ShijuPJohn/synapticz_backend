@@ -188,6 +188,23 @@ func CreateUser(c *fiber.Ctx) error {
 		return c.Status(400).SendString(err.Error())
 	}
 
+	// Check if user with email already exists
+	var existingUserID int
+	err := util.DB.QueryRow("SELECT id FROM users WHERE email = $1", u.Email).Scan(&existingUserID)
+	if err == nil {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"status":  "error",
+			"message": "User with this email already exists",
+		})
+	} else if err != sql.ErrNoRows {
+		// Only return error if it's not a "not found" error
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Error checking user existence",
+			"error":   err.Error(),
+		})
+	}
+
 	u.Role = "user"
 	u.PasswordChangedAt = time.Now().UTC()
 
