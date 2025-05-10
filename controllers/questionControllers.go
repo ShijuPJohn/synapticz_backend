@@ -594,7 +594,7 @@ func EditQuestion(c *fiber.Ctx) error {
 	db := util.DB
 	validate := validator.New()
 
-	// Get question ID from URL
+	// Get question ID from url
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{

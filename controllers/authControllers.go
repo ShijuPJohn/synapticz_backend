@@ -488,7 +488,7 @@ func LoginUser(c *fiber.Ctx) error {
 }
 
 func GetUserDetails(c *fiber.Ctx) error {
-	// Get user ID from URL params
+	// Get user ID from url params
 	userId := c.Locals("user").(models.User).ID
 
 	// Fetch user details from DB manually
@@ -600,7 +600,7 @@ func EditUserProfile(c *fiber.Ctx) error {
 
 const (
 	bucketName   = "synapticz-storage"               // ⬅️ Change this
-	storageURL   = "https://storage.googleapis.com/" // Base URL
+	storageURL   = "https://storage.googleapis.com/" // Base url
 	uploadFolder = "profile_pics/"                   // Optional: for organization
 )
 
