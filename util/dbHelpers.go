@@ -22,7 +22,7 @@ func ddlStrings() []string {
     linkedin VARCHAR(255),
     facebook VARCHAR(255),
     instagram VARCHAR(255),
-    profile_pic VARCHAR(255),
+    profile_pic VARCHAR(2000),
     is_premium BOOLEAN DEFAULT FALSE,
     premium_since TIMESTAMP,
     premium_expiry TIMESTAMP,
