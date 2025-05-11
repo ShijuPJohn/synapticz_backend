@@ -3,6 +3,8 @@ package controllers
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/ShijuPJohn/synapticz_backend/models"
+	"github.com/ShijuPJohn/synapticz_backend/util"
 	"github.com/gofiber/fiber/v2"
 	"io/ioutil"
 	"net/http"
@@ -35,6 +37,22 @@ func GenerateQuizFromPrompt(c *fiber.Ctx) error {
 			"error":   err.Error(),
 		})
 	}
+	userFromToken := c.Locals("user").(models.User)
+	userID := userFromToken.ID
+
+	// Fetch user from DBqSetOwnerID
+	var user models.User
+	err := util.DB.QueryRow("SELECT id, role FROM users WHERE id = $1", userID).Scan(&user.ID, &user.Role)
+	if err != nil {
+		return fiber.NewError(fiber.StatusUnauthorized, "User not found")
+	}
+	if !(user.Role == "admin" || user.Role == "owner") && (req.QuestionCount > 20) {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "A user can generate a maximum of 20 questions at once",
+		})
+	}
+
 	var questionFormat string = `[
   {
     "question": "question statement",
