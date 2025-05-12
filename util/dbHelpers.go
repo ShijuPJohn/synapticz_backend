@@ -65,6 +65,8 @@ func ddlStrings() []string {
     exam VARCHAR(255),
     deleted BOOLEAN DEFAULT false,
     language VARCHAR(255) NOT NULL,
+    access_level VARCHAR(20) NOT NULL CHECK (question_sets.access_level IN ('free', 'premium', 'paid')) DEFAULT 'free',
+    slug VARCHAR(255),
     time_duration VARCHAR(50),
     difficulty INT CHECK (difficulty BETWEEN 1 AND 10),
     description TEXT,
