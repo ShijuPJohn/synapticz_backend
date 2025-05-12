@@ -53,6 +53,10 @@ func CreateQuestionSet(c *fiber.Ctx) error {
 		defaultLevel := "free" // Make sure this matches your DB expectations
 		input.AccessLevel = &defaultLevel
 	}
+	if input.CoverImage == nil {
+		defaultImage := "https://storage.googleapis.com/synapticz-storage/profile_pics/Shiju-P-John-818a221f-d51a-4793-8576-5567da6ff04b.jpg"
+		input.CoverImage = &defaultImage
+	}
 
 	var questionSetID int
 	insertQS := `
