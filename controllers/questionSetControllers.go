@@ -26,6 +26,8 @@ type CreateQuestionSetInput struct {
 	Tags               []string   `json:"tags"`
 	Marks              *[]float64 `json:"marks"`
 	CoverImage         *string    `json:"cover_image"`
+	Slug               *string    `json:"slug"`
+	AccessLevel        *string    `json:"access_level"`
 }
 
 func CreateQuestionSet(c *fiber.Ctx) error {
@@ -51,9 +53,9 @@ func CreateQuestionSet(c *fiber.Ctx) error {
 	insertQS := `
 		INSERT INTO question_sets (
 			name, mode, subject, exam, language,
-			time_duration, description, associated_resource, created_by_id, created_at, cover_image
+			time_duration, description, associated_resource, created_by_id, created_at, cover_image, slug, access_level
 		)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, $11)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, $11, $12, $13)
 		RETURNING id
 	`
 	err = tx.QueryRow(
@@ -69,6 +71,8 @@ func CreateQuestionSet(c *fiber.Ctx) error {
 		user.ID,
 		time.Now(),
 		input.CoverImage,
+		input.Slug,
+		input.AccessLevel,
 	).Scan(&questionSetID)
 
 	if err != nil {
@@ -181,7 +185,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		SELECT 
 			qs.id, qs.name, qs.mode, qs.subject, qs.exam, qs.language,
 			qs.time_duration, qs.description, qs.associated_resource,
-			qs.created_by_id, u.name, qs.cover_image, qs.created_at,
+			qs.created_by_id, u.name, qs.cover_image, qs.created_at,qs.access_level,
 			(
 				SELECT COUNT(*) 
 				FROM question_set_questions qq 
@@ -327,6 +331,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		CreatedAt          time.Time `json:"created_at"`
 		TotalQuestions     int       `json:"total_questions"`
 		QuestionIDs        []int     `json:"question_ids"`
+		AccessLevel        string    `json:"access_level"`
 	}
 
 	var results []QuestionSetResponse
@@ -352,6 +357,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 			&qs.CreatedByName,
 			&coverImage,
 			&qs.CreatedAt,
+			&qs.AccessLevel,
 			&qs.TotalQuestions,
 		)
 		if err != nil {
@@ -450,13 +456,14 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 		CreatedAt            time.Time `json:"created_at"`
 		CreatedByName        string    `json:"created_by_name"`
 		TestSessionsTakenCnt int       `json:"test_sessions_taken_count"`
+		AccessLevel          string    `json:"access_level"`
 	}
 
 	query := `
 		SELECT 
 			qs.id, qs.name, qs.mode, qs.subject, qs.exam, qs.language,
 			qs.time_duration, qs.description, qs.associated_resource,
-			qs.cover_image, qs.created_at, u.name AS created_by_name,
+			qs.cover_image, qs.created_at, u.name AS created_by_name, qs.access_level,
 			(SELECT COUNT(*) FROM test_sessions ts WHERE ts.question_set_id = qs.id) AS test_sessions_taken_count
 		FROM question_sets qs
 		JOIN users u ON qs.created_by_id = u.id
@@ -466,7 +473,7 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 	err := util.DB.QueryRow(query, id).Scan(
 		&qs.ID, &qs.Name, &qs.Mode, &qs.Subject, &qs.Exam, &qs.Language,
 		&qs.TimeDuration, &qs.Description, &qs.AssociatedResource,
-		&qs.CoverImage, &qs.CreatedAt, &qs.CreatedByName, &qs.TestSessionsTakenCnt,
+		&qs.CoverImage, &qs.CreatedAt, &qs.CreatedByName, &qs.AccessLevel, &qs.TestSessionsTakenCnt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -538,6 +545,7 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 		"tags":                tags,
 		"test_sessions_taken": qs.TestSessionsTakenCnt,
 		"question_ids":        questionIDs,
+		"access_level":        qs.AccessLevel,
 		"can_start_test":      true,
 	})
 }
@@ -593,6 +601,8 @@ type UpdateQuestionSetInput struct {
 	Tags               []string   `json:"tags"`
 	Marks              *[]float64 `json:"marks"`
 	CoverImage         *string    `json:"cover_image"`
+	Slug               *string    `json:"slug"`
+	AccessLevel        *string    `json:"access_level"`
 }
 
 func UpdateQuestionSet(c *fiber.Ctx) error {
@@ -656,8 +666,11 @@ func UpdateQuestionSet(c *fiber.Ctx) error {
 			time_duration = $6,
 			description = $7,
 			associated_resource = $8,
-			cover_image = COALESCE($9, cover_image)
-		WHERE id = $10
+			cover_image = COALESCE($9, cover_image),
+			access_level = $10,
+			slug = $11
+		
+		WHERE id = $12
 	`
 
 	_, err = tx.Exec(
@@ -671,6 +684,8 @@ func UpdateQuestionSet(c *fiber.Ctx) error {
 		input.Description,
 		input.AssociatedResource,
 		input.CoverImage,
+		input.AccessLevel,
+		input.Slug,
 		qSetID,
 	)
 	if err != nil {
