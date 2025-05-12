@@ -47,7 +47,7 @@ func GenerateQuizFromPrompt(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusUnauthorized, "User not found")
 	}
-	if !(user.Role == "admin" || user.Role == "owner") && ((req.QuestionCount > 20) || len(strings.Fields(req.Prompt)) > 50) {
+	if !(user.Role == "admin" || user.Role == "owner") && ((req.QuestionCount > 100) || len(strings.Fields(req.Prompt)) > 100) {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "A user can generate a maximum of 20 questions at once",
