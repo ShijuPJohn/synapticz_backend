@@ -48,16 +48,21 @@ func CreateQuestionSet(c *fiber.Ctx) error {
 		})
 	}
 	defer tx.Rollback()
+	// Set default access level if not provided
+	if input.AccessLevel == nil {
+		defaultLevel := "free" // Make sure this matches your DB expectations
+		input.AccessLevel = &defaultLevel
+	}
 
 	var questionSetID int
 	insertQS := `
-		INSERT INTO question_sets (
-			name, mode, subject, exam, language,
-			time_duration, description, associated_resource, created_by_id, created_at, cover_image, slug, access_level
-		)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, $11, $12, $13)
-		RETURNING id
-	`
+    INSERT INTO question_sets (
+        name, mode, subject, exam, language,
+        time_duration, description, associated_resource, created_by_id, created_at, cover_image, slug, access_level
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, $11, $12, $13)
+    RETURNING id
+`
 	err = tx.QueryRow(
 		insertQS,
 		input.Name,
@@ -72,13 +77,17 @@ func CreateQuestionSet(c *fiber.Ctx) error {
 		time.Now(),
 		input.CoverImage,
 		input.Slug,
-		input.AccessLevel,
+		input.AccessLevel, // Now this will never be nil
 	).Scan(&questionSetID)
 
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to insert question set: " + err.Error(),
 		})
+	}
+	if input.AccessLevel == nil {
+		defaultLevel := "free" // Or whatever your DB's default is
+		input.AccessLevel = &defaultLevel
 	}
 	markSlice := []float64{}
 	if input.Marks != nil && len(*input.Marks) == len(input.QuestionIDs) {
@@ -331,7 +340,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		CreatedAt          time.Time `json:"created_at"`
 		TotalQuestions     int       `json:"total_questions"`
 		QuestionIDs        []int     `json:"question_ids"`
-		AccessLevel        string    `json:"access_level"`
+		AccessLevel        *string   `json:"access_level"`
 	}
 
 	var results []QuestionSetResponse
@@ -456,7 +465,7 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 		CreatedAt            time.Time `json:"created_at"`
 		CreatedByName        string    `json:"created_by_name"`
 		TestSessionsTakenCnt int       `json:"test_sessions_taken_count"`
-		AccessLevel          string    `json:"access_level"`
+		AccessLevel          *string   `json:"access_level"`
 	}
 
 	query := `
