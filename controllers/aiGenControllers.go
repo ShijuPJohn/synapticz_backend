@@ -87,6 +87,7 @@ func GenerateQuizFromPrompt(c *fiber.Ctx) error {
 		QuestionFormat: questionFormat,
 		QuizFormat:     quizFormat,
 		Language:       req.Language,
+		Difficulty:     req.Difficulty,
 	}
 
 	jsonData, err := json.Marshal(payload)

@@ -57,7 +57,7 @@ func ddlStrings() []string {
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
 );`,
-		`CREATE TABLE IF NOT EXISTS  question_sets (
+		`CREATE TABLE IF NOT EXISTS question_sets (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     mode VARCHAR(50) NOT NULL CHECK (mode IN ('practice', 'exam', 'timed')),
@@ -65,18 +65,27 @@ func ddlStrings() []string {
     exam VARCHAR(255),
     deleted BOOLEAN DEFAULT false,
     language VARCHAR(255) NOT NULL,
-    access_level VARCHAR(20) NOT NULL CHECK (question_sets.access_level IN ('free', 'premium', 'paid')) DEFAULT 'free',
+    access_level VARCHAR(20) NOT NULL CHECK (access_level IN ('free', 'premium', 'paid')) DEFAULT 'free',
     slug VARCHAR(255),
     time_duration VARCHAR(50),
     difficulty INT CHECK (difficulty BETWEEN 1 AND 10),
     description TEXT,
     associated_resource TEXT,
     created_by_id INT NOT NULL,
+    creator_type VARCHAR(30) NOT NULL CHECK (
+        creator_type IN (
+            'community',
+            'community_verified',
+            'admin',
+            'admin_verified'
+        )
+    ) DEFAULT 'community',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    cover_image VARCHAR(512) default 'https://storage.googleapis.com/synapticz-storage/profile_pics/Shiju-P-John-818a221f-d51a-4793-8576-5567da6ff04b.jpg',
+    cover_image VARCHAR(512) DEFAULT 'https://storage.googleapis.com/synapticz-storage/profile_pics/Shiju-P-John-818a221f-d51a-4793-8576-5567da6ff04b.jpg',
     FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE CASCADE
-)`,
+);
+`,
 		`CREATE TABLE IF NOT EXISTS  user_questionsets_editors (
     user_id INT NOT NULL,
     question_set_id INT,

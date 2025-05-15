@@ -63,4 +63,8 @@ func SetupRoutes(app *fiber.App) {
 	aigen := api.Group("/ai-gen")
 	aigen.Post("/quiz", middlewares.Protected(), controllers.GenerateQuizFromPrompt)
 
+	admin := api.Group("/admin")
+	admin.Get("/users", middlewares.Protected(), controllers.GetAllUsers)
+	admin.Get("/users/:uid", middlewares.Protected(), controllers.GetUserDetailsAdmin)
+
 }
