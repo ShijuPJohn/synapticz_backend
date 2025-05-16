@@ -73,18 +73,15 @@ func ddlStrings() []string {
     associated_resource TEXT,
     created_by_id INT NOT NULL,
     creator_type VARCHAR(30) NOT NULL CHECK (
-        creator_type IN (
-            'community',
-            'community_verified',
-            'admin',
-            'admin_verified'
-        )
+        creator_type IN ('owner', 'admin', 'community')
     ) DEFAULT 'community',
+    verified BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     cover_image VARCHAR(512) DEFAULT 'https://storage.googleapis.com/synapticz-storage/profile_pics/Shiju-P-John-818a221f-d51a-4793-8576-5567da6ff04b.jpg',
     FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
 `,
 		`CREATE TABLE IF NOT EXISTS  user_questionsets_editors (
     user_id INT NOT NULL,
@@ -294,29 +291,29 @@ func CreateTableIfNotExists() error {
 }
 func dropTables() []string {
 	return []string{
-		"DROP TABLE IF EXISTS email_verification_codes",
-		"DROP TABLE IF EXISTS user_daily_questions",
-		"DROP TABLE IF EXISTS question_error_reports",
-		"DROP TABLE IF EXISTS saved_explanations",
-		"DROP TABLE IF EXISTS bookmarked_questions",
-		"DROP TABLE IF EXISTS payments",
-		"DROP TABLE IF EXISTS subscription_plans",
-		"DROP TABLE IF EXISTS user_daily_activity",
-		"DROP TABLE IF EXISTS questionsets_questionsettags",
-		"DROP TABLE IF EXISTS question_questiontags",
-		"DROP TABLE IF EXISTS questionsettags",
-		"DROP TABLE IF EXISTS questiontags",
-		"DROP TABLE IF EXISTS test_session_question_answers",
+		//"DROP TABLE IF EXISTS email_verification_codes",
+		//"DROP TABLE IF EXISTS user_daily_questions",
+		//"DROP TABLE IF EXISTS question_error_reports",
+		//"DROP TABLE IF EXISTS saved_explanations",
+		//"DROP TABLE IF EXISTS bookmarked_questions",
+		//"DROP TABLE IF EXISTS payments",
+		//"DROP TABLE IF EXISTS subscription_plans",
+		//"DROP TABLE IF EXISTS user_daily_activity",
+		//"DROP TABLE IF EXISTS questionsets_questionsettags",
+		//"DROP TABLE IF EXISTS question_questiontags",
+		//"DROP TABLE IF EXISTS questionsettags",
+		//"DROP TABLE IF EXISTS questiontags",
+		//"DROP TABLE IF EXISTS test_session_question_answers",
 		//"DROP TABLE IF EXISTS test_sessions",
-		"DROP TABLE IF EXISTS question_set_reviews",
-		"DROP TABLE IF EXISTS question_set_questions",
-		"DROP TABLE IF EXISTS user_questionsets_editors",
+		//"DROP TABLE IF EXISTS question_set_reviews",
+		//"DROP TABLE IF EXISTS question_set_questions",
+		//"DROP TABLE IF EXISTS user_questionsets_editors",
 		//"DROP TABLE IF EXISTS question_sets",
-		"DROP TABLE IF EXISTS user_questions_editors",
-		"DROP TABLE IF EXISTS questions",
-		"DROP TABLE IF EXISTS user_connections",
-		"DROP TABLE IF EXISTS shoutouts",
-		"DROP TABLE IF EXISTS shared_mentee_activity",
+		//"DROP TABLE IF EXISTS user_questions_editors",
+		//"DROP TABLE IF EXISTS questions",
+		//"DROP TABLE IF EXISTS user_connections",
+		//"DROP TABLE IF EXISTS shoutouts",
+		//"DROP TABLE IF EXISTS shared_mentee_activity",
 		//"DROP TABLE IF EXISTS users",
 	}
 }
