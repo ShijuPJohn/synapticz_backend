@@ -28,6 +28,8 @@ type CreateQuestionSetInput struct {
 	CoverImage         *string    `json:"cover_image"`
 	Slug               *string    `json:"slug"`
 	AccessLevel        *string    `json:"access_level"`
+	CreatorType        *string    `json:"creator_type"`
+	Verified           bool       `json:"verified"`
 }
 
 func CreateQuestionSet(c *fiber.Ctx) error {
@@ -62,9 +64,9 @@ func CreateQuestionSet(c *fiber.Ctx) error {
 	insertQS := `
     INSERT INTO question_sets (
         name, mode, subject, exam, language,
-        time_duration, description, associated_resource, created_by_id, cover_image, slug, access_level
+        time_duration, description, associated_resource, created_by_id, cover_image, slug, access_level, creator_type, verified
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, $11, $12)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, $11, $12, $13, $14)
     RETURNING id
 `
 	err = tx.QueryRow(
@@ -80,7 +82,9 @@ func CreateQuestionSet(c *fiber.Ctx) error {
 		user.ID,
 		input.CoverImage,
 		input.Slug,
-		input.AccessLevel, // Now this will never be nil
+		input.AccessLevel,
+		input.CreatorType,
+		input.Verified,
 	).Scan(&questionSetID)
 
 	if err != nil {
@@ -176,7 +180,13 @@ func CreateQuestionSet(c *fiber.Ctx) error {
 		"message": "Question set created successfully",
 	})
 }
-func GetQuestionSets(c *fiber.Ctx) error {
+func GetVerifiedQuestionSets(c *fiber.Ctx) error {
+	return GetQuestionSets(c, true)
+}
+func GetUnverifiedQuestionSets(c *fiber.Ctx) error {
+	return GetQuestionSets(c, false)
+}
+func GetQuestionSets(c *fiber.Ctx, ver bool) error {
 	subject := c.Query("subject")
 	exam := c.Query("exam")
 	language := c.Query("language")
@@ -197,7 +207,7 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		SELECT 
 			qs.id, qs.name, qs.mode, qs.subject, qs.exam, qs.language,
 			qs.time_duration, qs.description, qs.associated_resource,
-			qs.created_by_id, u.name, qs.cover_image, qs.created_at,qs.access_level,
+			qs.created_by_id, u.name, qs.cover_image, qs.created_at,qs.access_level,qs.creator_type, qs.verified,
 			(
 				SELECT COUNT(*) 
 				FROM question_set_questions qq 
@@ -261,6 +271,13 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		countQuery += fmt.Sprintf(" AND qs.associated_resource = $%d", argID)
 		args = append(args, resource)
 		argID++
+	}
+	if ver {
+		baseQuery += " AND qs.verified = true"
+		countQuery += " AND qs.verified = true"
+	} else {
+		baseQuery += " AND qs.verified = false"
+		countQuery += " AND qs.verified = false"
 	}
 	if tags != "" {
 		tagList := strings.Split(tags, ",")
@@ -344,6 +361,8 @@ func GetQuestionSets(c *fiber.Ctx) error {
 		TotalQuestions     int       `json:"total_questions"`
 		QuestionIDs        []int     `json:"question_ids"`
 		AccessLevel        *string   `json:"access_level"`
+		CreatorType        *string   `json:"creator_type"`
+		Verified           bool      `json:"verified"`
 	}
 
 	var results []QuestionSetResponse
@@ -370,6 +389,8 @@ func GetQuestionSets(c *fiber.Ctx) error {
 			&coverImage,
 			&qs.CreatedAt,
 			&qs.AccessLevel,
+			&qs.CreatorType,
+			&qs.Verified,
 			&qs.TotalQuestions,
 		)
 		if err != nil {
@@ -469,13 +490,15 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 		CreatedByName        string    `json:"created_by_name"`
 		TestSessionsTakenCnt int       `json:"test_sessions_taken_count"`
 		AccessLevel          *string   `json:"access_level"`
+		CreatorType          *string   `json:"creator_type"`
+		Verified             bool      `json:"verified"`
 	}
 
 	query := `
 		SELECT 
 			qs.id, qs.name, qs.mode, qs.subject, qs.exam, qs.language,
 			qs.time_duration, qs.description, qs.associated_resource,
-			qs.cover_image, qs.created_at, u.name AS created_by_name, qs.access_level,
+			qs.cover_image, qs.created_at, u.name AS created_by_name, qs.access_level,qs.creator_type, qs.verified,
 			(SELECT COUNT(*) FROM test_sessions ts WHERE ts.question_set_id = qs.id) AS test_sessions_taken_count
 		FROM question_sets qs
 		JOIN users u ON qs.created_by_id = u.id
@@ -485,7 +508,7 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 	err := util.DB.QueryRow(query, id).Scan(
 		&qs.ID, &qs.Name, &qs.Mode, &qs.Subject, &qs.Exam, &qs.Language,
 		&qs.TimeDuration, &qs.Description, &qs.AssociatedResource,
-		&qs.CoverImage, &qs.CreatedAt, &qs.CreatedByName, &qs.AccessLevel, &qs.TestSessionsTakenCnt,
+		&qs.CoverImage, &qs.CreatedAt, &qs.CreatedByName, &qs.AccessLevel, &qs.CreatorType, &qs.Verified, &qs.TestSessionsTakenCnt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -558,6 +581,8 @@ func GetQuestionSetByID(c *fiber.Ctx) error {
 		"test_sessions_taken": qs.TestSessionsTakenCnt,
 		"question_ids":        questionIDs,
 		"access_level":        qs.AccessLevel,
+		"creator_type":        qs.CreatorType,
+		"verified":            qs.Verified,
 		"can_start_test":      true,
 	})
 }
@@ -615,6 +640,8 @@ type UpdateQuestionSetInput struct {
 	CoverImage         *string    `json:"cover_image"`
 	Slug               *string    `json:"slug"`
 	AccessLevel        *string    `json:"access_level"`
+	CreatorType        *string    `json:"creator_type"`
+	Verified           bool       `json:"verified"`
 }
 
 func UpdateQuestionSet(c *fiber.Ctx) error {
@@ -680,9 +707,11 @@ func UpdateQuestionSet(c *fiber.Ctx) error {
 			associated_resource = $8,
 			cover_image = COALESCE($9, cover_image),
 			access_level = $10,
-			slug = $11
+			slug = $11,
+			creator_type=$12,
+			verified=$13
 		
-		WHERE id = $12
+		WHERE id = $14
 	`
 
 	_, err = tx.Exec(
@@ -698,6 +727,8 @@ func UpdateQuestionSet(c *fiber.Ctx) error {
 		input.CoverImage,
 		input.AccessLevel,
 		input.Slug,
+		input.CreatorType,
+		input.Verified,
 		qSetID,
 	)
 	if err != nil {
