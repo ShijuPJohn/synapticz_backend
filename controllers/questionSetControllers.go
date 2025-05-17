@@ -181,12 +181,15 @@ func CreateQuestionSet(c *fiber.Ctx) error {
 	})
 }
 func GetVerifiedQuestionSets(c *fiber.Ctx) error {
-	return GetQuestionSets(c, true)
+	return GetQuestionSetsHelper(c, true, true)
 }
 func GetUnverifiedQuestionSets(c *fiber.Ctx) error {
-	return GetQuestionSets(c, false)
+	return GetQuestionSetsHelper(c, true, false)
 }
-func GetQuestionSets(c *fiber.Ctx, ver bool) error {
+func GetQuestionSets(c *fiber.Ctx) error {
+	return GetQuestionSetsHelper(c, false, false)
+}
+func GetQuestionSetsHelper(c *fiber.Ctx, isVerificationPresent bool, ver bool) error {
 	subject := c.Query("subject")
 	exam := c.Query("exam")
 	language := c.Query("language")
@@ -272,12 +275,14 @@ func GetQuestionSets(c *fiber.Ctx, ver bool) error {
 		args = append(args, resource)
 		argID++
 	}
-	if ver {
-		baseQuery += " AND qs.verified = true"
-		countQuery += " AND qs.verified = true"
-	} else {
-		baseQuery += " AND qs.verified = false"
-		countQuery += " AND qs.verified = false"
+	if isVerificationPresent {
+		if ver {
+			baseQuery += " AND qs.verified = true"
+			countQuery += " AND qs.verified = true"
+		} else {
+			baseQuery += " AND qs.verified = false"
+			countQuery += " AND qs.verified = false"
+		}
 	}
 	if tags != "" {
 		tagList := strings.Split(tags, ",")
